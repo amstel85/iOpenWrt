@@ -107,6 +107,18 @@ const deviceController = {
         const { performGlobalSync } = require('../services/deviceManager');
         await performGlobalSync(db);
         return { success: true };
+    },
+
+    reboot: async (request, reply) => {
+        const { id } = request.params;
+        const { rebootDevice } = require('../services/deviceManager');
+        try {
+            await rebootDevice(db, id);
+            return { success: true };
+        } catch (error) {
+            console.error(`Reboot failed for device ${id}:`, error);
+            return reply.status(500).send({ error: "Failed to send reboot command" });
+        }
     }
 };
 

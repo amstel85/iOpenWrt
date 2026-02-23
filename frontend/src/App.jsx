@@ -6,14 +6,7 @@ import Devices from './pages/Devices';
 import DeviceDashboard from './pages/DeviceDashboard';
 
 import Dashboard from './pages/Dashboard';
-
-// Placeholder Settings component
-const Settings = () => (
-    <div className="bg-white rounded-lg shadow border border-gray-200 p-8 text-center text-gray-500">
-        <h2 className="text-xl font-medium text-gray-900 mb-2">Controller Settings</h2>
-        <p>Global configurations and admin settings will appear here.</p>
-    </div>
-);
+import Settings from './pages/Settings';
 
 function App() {
     return (
