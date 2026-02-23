@@ -21,6 +21,10 @@ async function getDeviceStats(device) {
         cat /proc/meminfo
         echo "---NET---"
         ifconfig br-lan 2>/dev/null || ifconfig eth0 2>/dev/null
+        echo "---LEASES---"
+        cat /tmp/dhcp.leases 2>/dev/null
+        echo "---ARP---"
+        cat /proc/net/arp 2>/dev/null
         echo "---WIFI---"
         iwinfo 2>/dev/null | grep ESSID | cut -d" " -f1 | while read iface; do iwinfo $iface assoclist 2>/dev/null; done
     `;
@@ -40,8 +44,13 @@ function parseStats(raw) {
         load: { '1m': 0, '5m': 0, '15m': 0 },
         memory: { total: 0, free: 0, used: 0, percent: 0 },
         network: { rx_bytes: 0, tx_bytes: 0 },
-        wifi_clients: 0
+        wifi_clients: 0,
+        clients: []
     };
+
+    let leases = [];
+    let arp = {};
+    let wifiMacs = [];
 
     for (let i = 0; i < sections.length; i++) {
         const section = sections[i].trim();
@@ -81,11 +90,60 @@ function parseStats(raw) {
             stats.network.rx_bytes = parseInt(rxMatch ? rxMatch[1] : (rxPacketsMatch ? rxPacketsMatch[1] : 0));
             stats.network.tx_bytes = parseInt(txMatch ? txMatch[1] : (txPacketsMatch ? txPacketsMatch[1] : 0));
         }
+        else if (section === 'LEASES') {
+            content.split('\n').forEach(line => {
+                const parts = line.trim().split(' ');
+                if (parts.length >= 4) {
+                    leases.push({ mac: parts[1].toLowerCase(), ip: parts[2], name: parts[3] !== '*' ? parts[3] : 'Unknown' });
+                }
+            });
+        }
+        else if (section === 'ARP') {
+            content.split('\n').forEach(line => {
+                const parts = line.trim().split(/\s+/);
+                if (parts.length >= 4 && parts[3].includes(':')) {
+                    arp[parts[3].toLowerCase()] = parts[0];
+                }
+            });
+        }
         else if (section === 'WIFI') {
             const macMatches = content.match(/([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})/g);
-            stats.wifi_clients = macMatches ? macMatches.length : 0;
+            if (macMatches) {
+                wifiMacs = macMatches.map(m => m.toLowerCase());
+                stats.wifi_clients = wifiMacs.length;
+            }
         }
     }
+
+    // Correlate: Create a unique list of clients, prioritizing WiFi but including info from DHCP
+    // We'll use a Map to keep unique MACs
+    const clientMap = new Map();
+
+    // 1. Start with WiFi clients
+    wifiMacs.forEach(mac => {
+        const lease = leases.find(l => l.mac === mac);
+        clientMap.set(mac, {
+            mac,
+            ip: lease ? lease.ip : (arp[mac] || '?.?.?.?'),
+            name: lease ? lease.name : 'Wireless Client',
+            type: 'wireless'
+        });
+    });
+
+    // 2. Add other active leases (wired)
+    leases.forEach(lease => {
+        if (!clientMap.has(lease.mac)) {
+            clientMap.set(lease.mac, {
+                mac: lease.mac,
+                ip: lease.ip,
+                name: lease.name,
+                type: 'wired'
+            });
+        }
+    });
+
+    stats.clients = Array.from(clientMap.values());
+    stats.wifi_clients = wifiMacs.length; // Keep the specific count
 
     return stats;
 }
