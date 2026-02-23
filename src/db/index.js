@@ -34,6 +34,8 @@ function initDb() {
             private_key TEXT,
             auth_type TEXT CHECK(auth_type IN ('password', 'key')) DEFAULT 'password',
             status TEXT DEFAULT 'offline',
+            client_count INTEGER DEFAULT 0,
+            clients_json TEXT,
             last_seen DATETIME,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         );
@@ -48,6 +50,18 @@ function initDb() {
             FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE
         );
     `);
+
+    // Migration: Add columns if they don't exist
+    const columns = db.prepare("PRAGMA table_info(devices)").all();
+    const hasClientCount = columns.some(c => c.name === 'client_count');
+    const hasClientsJson = columns.some(c => c.name === 'clients_json');
+
+    if (!hasClientCount) {
+        db.exec("ALTER TABLE devices ADD COLUMN client_count INTEGER DEFAULT 0");
+    }
+    if (!hasClientsJson) {
+        db.exec("ALTER TABLE devices ADD COLUMN clients_json TEXT");
+    }
 
     console.log("Database initialized at", dbPath);
 }

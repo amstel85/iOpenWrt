@@ -35,15 +35,24 @@ async function executeOnMultiple(routers, cmd, concurrencyLimit = 5) {
     return results;
 }
 
+const { getDeviceStats } = require('./deviceStats');
+
 /**
- * Check a single device's status and update the DB
+ * Check a single device's status and update the DB with stats and client info
  */
 async function checkDeviceStatus(db, device) {
     try {
-        const auth = device.auth_type === 'password' ? { password: device.password } : { privateKey: device.private_key };
-        await executeCommand(device.ip, device.username, auth, 'uptime');
+        const stats = await getDeviceStats(device);
 
-        db.prepare("UPDATE devices SET status = 'online', last_seen = CURRENT_TIMESTAMP WHERE id = ?").run(device.id);
+        db.prepare(`
+            UPDATE devices 
+            SET status = 'online', 
+                last_seen = CURRENT_TIMESTAMP,
+                client_count = ?,
+                clients_json = ?
+            WHERE id = ?
+        `).run(stats.clients.length, JSON.stringify(stats.clients), device.id);
+
         return true;
     } catch (error) {
         console.error(`Failed to connect to device ${device.ip} (${device.name}):`, error.message);

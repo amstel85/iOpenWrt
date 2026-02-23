@@ -5,13 +5,13 @@ const { getDeviceStats } = require('../services/deviceStats');
 const deviceController = {
     getAll: async (request, reply) => {
         // Return devices (omit sensitive fields like keys/passwords for safety)
-        const devices = db.prepare('SELECT id, name, ip, username, auth_type, status, last_seen, created_at FROM devices').all();
+        const devices = db.prepare('SELECT id, name, ip, username, auth_type, status, client_count, clients_json, last_seen, created_at FROM devices').all();
         return devices;
     },
 
     getById: async (request, reply) => {
         const { id } = request.params;
-        const device = db.prepare('SELECT id, name, ip, username, auth_type, status, last_seen, created_at FROM devices WHERE id = ?').get(id);
+        const device = db.prepare('SELECT id, name, ip, username, auth_type, status, client_count, clients_json, last_seen, created_at FROM devices WHERE id = ?').get(id);
         if (!device) {
             return reply.status(404).send({ error: "Device not found" });
         }
