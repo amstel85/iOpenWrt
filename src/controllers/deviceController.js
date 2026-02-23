@@ -101,6 +101,12 @@ const deviceController = {
             return reply.status(404).send({ error: "Device not found" });
         }
         return { success: true };
+    },
+
+    syncAll: async (request, reply) => {
+        const { performGlobalSync } = require('../services/deviceManager');
+        await performGlobalSync(db);
+        return { success: true };
     }
 };
 
