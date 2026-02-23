@@ -146,4 +146,15 @@ function startStatusMonitor(db) {
     }, 30000); // 30 seconds
 }
 
-module.exports = { executeOnMultiple, checkDeviceStatus, startStatusMonitor, performGlobalSync };
+async function rebootDevice(db, id) {
+    const device = db.prepare('SELECT ip, username, auth_type, password, private_key FROM devices WHERE id = ?').get(id);
+    if (!device) throw new Error("Device not found");
+
+    const auth = device.auth_type === 'password' ? { password: device.password } : { privateKey: device.private_key };
+    const { executeCommand } = require('./sshService');
+
+    console.log(`Sending reboot command to ${device.ip}`);
+    return await executeCommand(device.ip, device.username, auth, 'reboot');
+}
+
+module.exports = { executeOnMultiple, checkDeviceStatus, startStatusMonitor, performGlobalSync, rebootDevice };
