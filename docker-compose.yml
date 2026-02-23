@@ -1,11 +1,11 @@
 services:
   iopenwrt:
-    build: .
+    image: amstel/iopenwrt:latest
     container_name: iopenwrt-controller
     ports:
       - "${PORT:-3000}:${PORT:-3000}"
     volumes:
-      - ./data:/app/data
+      - /mnt/user/appdata/iOpenWRT/data:/app/data
     restart: unless-stopped
     env_file:
       - .env
