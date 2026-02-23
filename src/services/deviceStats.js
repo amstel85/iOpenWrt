@@ -107,43 +107,35 @@ function parseStats(raw) {
             });
         }
         else if (section === 'WIFI') {
-            const macMatches = content.match(/([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})/g);
-            if (macMatches) {
-                wifiMacs = macMatches.map(m => m.toLowerCase());
-                stats.wifi_clients = wifiMacs.length;
-            }
+            const lines = content.split('\n');
+            lines.forEach(line => {
+                // Look for MAC and RSSI (signal)
+                // Format usually: MAC  RSSI  SNR  ...
+                const macMatch = line.match(/([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})/);
+                if (macMatch) {
+                    const mac = macMatch[0].toLowerCase();
+                    wifiMacs.push(mac);
+
+                    // Try to find RSSI (usually the first negative number after the MAC)
+                    const rssiMatch = line.match(/-\d+/);
+                    const rssi = rssiMatch ? parseInt(rssiMatch[0]) : null;
+
+                    clientMap.set(mac, {
+                        mac,
+                        rssi,
+                        type: 'wireless'
+                    });
+                }
+            });
+            stats.wifi_clients = wifiMacs.length;
         }
     }
 
-    // Correlate: Create a unique list of clients, prioritizing WiFi but including info from DHCP
-    // We'll use a Map to keep unique MACs
-    const clientMap = new Map();
-
-    // 1. Start with WiFi clients
-    wifiMacs.forEach(mac => {
-        const lease = leases.find(l => l.mac === mac);
-        clientMap.set(mac, {
-            mac,
-            ip: lease ? lease.ip : (arp[mac] || '?.?.?.?'),
-            name: lease ? lease.name : 'Wireless Client',
-            type: 'wireless'
-        });
-    });
-
-    // 2. Add other active leases (wired)
-    leases.forEach(lease => {
-        if (!clientMap.has(lease.mac)) {
-            clientMap.set(lease.mac, {
-                mac: lease.mac,
-                ip: lease.ip,
-                name: lease.name,
-                type: 'wired'
-            });
-        }
-    });
-
-    stats.clients = Array.from(clientMap.values());
-    stats.wifi_clients = wifiMacs.length; // Keep the specific count
+    // We no longer correlate inside parseStats because we need global data from all routers.
+    // We return the raw collected info for the manager to aggregate.
+    stats.raw_leases = leases;
+    stats.raw_arp = arp;
+    stats.wifi_macs = Array.from(clientMap.values()); // Includes MAC and RSSI
 
     return stats;
 }

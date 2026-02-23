@@ -39,6 +39,7 @@ fastify.register(async function (protectedRoutes) {
     protectedRoutes.post('/api/devices', deviceController.add);
     protectedRoutes.put('/api/devices/:id', deviceController.update);
     protectedRoutes.delete('/api/devices/:id', deviceController.remove);
+    protectedRoutes.post('/api/network/sync', deviceController.syncAll);
 });
 
 // For React Router: Redirect all non-API GET requests to index.html
