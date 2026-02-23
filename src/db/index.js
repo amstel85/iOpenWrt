@@ -55,12 +55,20 @@ function initDb() {
     const columns = db.prepare("PRAGMA table_info(devices)").all();
     const hasClientCount = columns.some(c => c.name === 'client_count');
     const hasClientsJson = columns.some(c => c.name === 'clients_json');
+    const hasMeshId = columns.some(c => c.name === 'mesh_id');
+    const hasEssid = columns.some(c => c.name === 'essid');
 
     if (!hasClientCount) {
         db.exec("ALTER TABLE devices ADD COLUMN client_count INTEGER DEFAULT 0");
     }
     if (!hasClientsJson) {
         db.exec("ALTER TABLE devices ADD COLUMN clients_json TEXT");
+    }
+    if (!hasMeshId) {
+        db.exec("ALTER TABLE devices ADD COLUMN mesh_id TEXT");
+    }
+    if (!hasEssid) {
+        db.exec("ALTER TABLE devices ADD COLUMN essid TEXT");
     }
 
     console.log("Database initialized at", dbPath);

@@ -27,6 +27,8 @@ async function getDeviceStats(device) {
         cat /proc/net/arp 2>/dev/null
         echo "---WIFI---"
         iwinfo 2>/dev/null | grep ESSID | cut -d" " -f1 | while read iface; do iwinfo $iface assoclist 2>/dev/null; done
+        echo "---WIRELESS_INFO---"
+        iwinfo 2>/dev/null | grep -E "ESSID|Mesh ID"
     `;
 
     try {
@@ -129,6 +131,15 @@ function parseStats(raw) {
                 }
             });
             stats.wifi_clients = wifiMacs.length;
+        }
+        else if (section === 'WIRELESS_INFO') {
+            const lines = content.split('\n');
+            lines.forEach(line => {
+                const essidMatch = line.match(/ESSID: "([^"]+)"/);
+                const meshMatch = line.match(/Mesh ID: "([^"]+)"/);
+                if (essidMatch) stats.essid = essidMatch[1];
+                if (meshMatch) stats.mesh_id = meshMatch[1];
+            });
         }
     }
 

@@ -81,6 +81,18 @@ const DeviceDashboard = () => {
                     <p className="text-sm text-gray-500 font-mono mt-1">{device?.ip}</p>
                 </div>
                 <div className="flex items-center space-x-4">
+                    {device?.essid && (
+                        <div className="hidden md:flex flex-col items-end mr-2">
+                            <span className="text-[10px] text-gray-400 font-bold uppercase">ESSID</span>
+                            <span className="text-sm font-bold text-gray-700">{device.essid}</span>
+                        </div>
+                    )}
+                    {device?.mesh_id && (
+                        <div className="hidden md:flex flex-col items-end mr-4">
+                            <span className="text-[10px] text-blue-400 font-bold uppercase">Mesh ID</span>
+                            <span className="text-sm font-black text-blue-600 px-2 py-0.5 bg-blue-50 rounded-lg">{device.mesh_id}</span>
+                        </div>
+                    )}
                     {device?.status === 'online' && (
                         <button
                             onClick={handleReboot}

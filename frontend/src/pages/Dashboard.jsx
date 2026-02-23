@@ -58,6 +58,15 @@ const Dashboard = () => {
 
     const totalClients = allClients.length;
 
+    // Mesh Consistency Audit
+    const onlineDevices = devices.filter(d => d.status === 'online');
+    const meshIds = [...new Set(onlineDevices.map(d => d.mesh_id).filter(id => id))];
+    const ssids = [...new Set(onlineDevices.map(d => d.essid).filter(id => id))];
+
+    const isMeshConsistent = meshIds.length <= 1 && ssids.length <= 1;
+    const dominantMeshId = meshIds[0] || 'Unknown';
+    const dominantSsid = ssids[0] || 'Unknown';
+
     // Overall Health
     let hColor = 'text-green-500';
     let hBg = 'bg-green-100';
@@ -72,6 +81,11 @@ const Dashboard = () => {
         hColor = 'text-red-500';
         hBg = 'bg-red-100';
         hText = 'Critical';
+        HIcon = AlertCircle;
+    } else if (!isMeshConsistent) {
+        hColor = 'text-orange-500';
+        hBg = 'bg-orange-100';
+        hText = 'Mesh Mismatch';
         HIcon = AlertCircle;
     } else if (offline > 0) {
         hColor = 'text-yellow-500';
@@ -192,6 +206,14 @@ const Dashboard = () => {
                                     {device.last_seen ? new Date(device.last_seen + 'Z').toLocaleTimeString() : 'Establishing...'}
                                 </p>
                             </div>
+                            {device.status === 'online' && (
+                                <div className="flex flex-col items-end">
+                                    <span className="text-[10px] text-blue-400 font-bold uppercase mb-1">{device.essid || 'No SSID'}</span>
+                                    <div className="flex items-center text-[10px] font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100">
+                                        {device.mesh_id || 'STANDALONE'}
+                                    </div>
+                                </div>
+                            )}
                             {device.status === 'online' && (
                                 <div className="flex flex-col items-end">
                                     <span className="text-[10px] text-purple-400 font-bold uppercase mb-1">Active Users</span>
