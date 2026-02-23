@@ -49,6 +49,14 @@ function initDb() {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS client_registry (
+            mac TEXT PRIMARY KEY,
+            custom_name TEXT,
+            is_static_ip BOOLEAN DEFAULT 0,
+            notes TEXT,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
     `);
 
     // Migration: Add columns if they don't exist

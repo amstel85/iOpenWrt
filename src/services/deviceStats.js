@@ -27,8 +27,10 @@ async function getDeviceStats(device) {
         cat /proc/net/arp 2>/dev/null
         echo "---WIFI---"
         iwinfo 2>/dev/null | grep ESSID | cut -d" " -f1 | while read iface; do iwinfo $iface assoclist 2>/dev/null; done
-        echo "---WIRELESS_INFO---"
-        iwinfo 2>/dev/null | grep -E "ESSID|Mesh ID"
+        echo "---NEIGH---"
+        ip neigh show 2>/dev/null
+        echo "---WIFI_INFO_DETAIL---"
+        iwinfo 2>/dev/null | grep ESSID | cut -d" " -f1 | while read iface; do echo "IFACE: $iface"; iwinfo $iface info 2>/dev/null; done
     `;
 
     try {
@@ -132,13 +134,29 @@ function parseStats(raw) {
             });
             stats.wifi_clients = wifiMacs.length;
         }
-        else if (section === 'WIRELESS_INFO') {
+        else if (section === 'NEIGH') {
+            content.split('\n').forEach(line => {
+                const parts = line.trim().split(/\s+/);
+                // Usually: 192.168.1.10 dev br-lan lladdr 00:11:22:33:44:55 REACHABLE
+                if (parts.length >= 5) {
+                    const ip = parts[0];
+                    const macIndex = parts.indexOf('lladdr');
+                    if (macIndex !== -1 && parts[macIndex + 1]) {
+                        const mac = parts[macIndex + 1].toLowerCase();
+                        if (!arp[mac]) arp[mac] = ip;
+                    }
+                }
+            });
+        }
+        else if (section === 'WIFI_INFO_DETAIL') {
             const lines = content.split('\n');
             lines.forEach(line => {
                 const essidMatch = line.match(/ESSID: "([^"]+)"/);
                 const meshMatch = line.match(/Mesh ID: "([^"]+)"/);
+                const modeMatch = line.match(/Mode: ([^ \t\n\r]+)/);
                 if (essidMatch) stats.essid = essidMatch[1];
                 if (meshMatch) stats.mesh_id = meshMatch[1];
+                if (modeMatch) stats.wifi_mode = modeMatch[1];
             });
         }
     }
