@@ -110,9 +110,11 @@ async function performGlobalSync(db) {
             SET status = 'online', 
                 last_seen = CURRENT_TIMESTAMP,
                 client_count = ?,
-                clients_json = ?
+                clients_json = ?,
+                essid = ?,
+                mesh_id = ?
             WHERE id = ?
-        `).run(enrichedClients.length, JSON.stringify(enrichedClients), deviceId);
+        `).run(enrichedClients.length, JSON.stringify(enrichedClients), stats.essid || null, stats.mesh_id || null, deviceId);
     }
 
     console.log(`Global sync completed at ${new Date().toISOString()}`);
