@@ -51,6 +51,7 @@ function parseStats(raw) {
     let leases = [];
     let arp = {};
     let wifiMacs = [];
+    const clientMap = new Map();
 
     for (let i = 0; i < sections.length; i++) {
         const section = sections[i].trim();
