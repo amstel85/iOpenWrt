@@ -44,7 +44,9 @@ const { getManufacturer } = require('./ouiService');
 async function performGlobalSync(db) {
     const devices = db.prepare('SELECT id, name, ip, username, auth_type, password, private_key FROM devices').all();
     const allDeviceStats = [];
-    const globalLeaseMap = new Map(); // MAC -> { ip, name }
+    // 0. Fetch registry for persistent naming
+    const registry = db.prepare('SELECT mac, custom_name FROM client_registry').all();
+    const registryMap = new Map(registry.map(r => [r.mac, r.custom_name]));
 
     // 1. Fetch stats from all devices in parallel
     const promises = devices.map(async (device) => {
@@ -58,10 +60,10 @@ async function performGlobalSync(db) {
                     globalLeaseMap.set(lease.mac, { ip: lease.ip, name: lease.name });
                 });
             }
-            // Also collect ARP info as fallback
+            // Also collect ARP/Neighbor info as fallback
             if (stats.raw_arp) {
                 Object.entries(stats.raw_arp).forEach(([mac, ip]) => {
-                    if (!globalLeaseMap.has(mac)) {
+                    if (!globalLeaseMap.has(mac) || globalLeaseMap.get(mac).ip === '?.?.?.?') {
                         globalLeaseMap.set(mac, { ip, name: 'Unknown' });
                     }
                 });
@@ -76,16 +78,31 @@ async function performGlobalSync(db) {
 
     // 2. Enrich and update each device
     for (const { deviceId, deviceName, stats } of allDeviceStats) {
+        // Get previous client state to detect new joins
+        const prevDevice = db.prepare('SELECT clients_json, status FROM devices WHERE id = ?').get(deviceId);
+        const prevClients = prevDevice?.clients_json ? JSON.parse(prevDevice.clients_json) : [];
+        const prevMacs = new Set(prevClients.map(c => c.mac));
+
         const enrichedClients = stats.wifi_macs.map(wifiClient => {
             const globalInfo = globalLeaseMap.get(wifiClient.mac) || { ip: '?.?.?.?', name: 'Wireless Client' };
-            return {
+            const persistentName = registryMap.get(wifiClient.mac);
+
+            const client = {
                 mac: wifiClient.mac,
                 ip: globalInfo.ip,
-                name: globalInfo.name,
+                name: persistentName || globalInfo.name, // Priority to custom name
                 rssi: wifiClient.rssi,
                 manufacturer: getManufacturer(wifiClient.mac),
                 type: 'wireless'
             };
+
+            // Alert for new device
+            if (prevDevice?.status === 'online' && !prevMacs.has(client.mac)) {
+                const { sendTelegramAlert } = require('./telegramService');
+                sendTelegramAlert(`🆕 *New Client Connected*\nDevice: ${client.name}\nMAC: \`${client.mac}\`\nIP: ${client.ip}\nRouter: ${deviceName}`);
+            }
+
+            return client;
         });
 
         // Also add wired clients if this router has local leases that aren't wireless
@@ -93,17 +110,30 @@ async function performGlobalSync(db) {
             stats.raw_leases.forEach(lease => {
                 const isWireless = stats.wifi_macs.some(w => w.mac === lease.mac);
                 if (!isWireless) {
-                    enrichedClients.push({
+                    const persistentName = registryMap.get(lease.mac);
+                    const client = {
                         mac: lease.mac,
                         ip: lease.ip,
-                        name: lease.name,
+                        name: persistentName || lease.name,
                         rssi: null,
                         manufacturer: getManufacturer(lease.mac),
                         type: 'wired'
-                    });
+                    };
+
+                    if (prevDevice?.status === 'online' && !prevMacs.has(client.mac)) {
+                        const { sendTelegramAlert } = require('./telegramService');
+                        sendTelegramAlert(`🆕 *New Wired Client*\nDevice: ${client.name}\nMAC: \`${client.mac}\`\nIP: ${client.ip}\nRouter: ${deviceName}`);
+                    }
+
+                    enrichedClients.push(client);
                 }
             });
         }
+
+        // Migration check for wifi_mode column (inline for simplicity in this specific task)
+        try {
+            db.prepare(`ALTER TABLE devices ADD COLUMN wifi_mode TEXT`).run();
+        } catch (e) { /* already exists */ }
 
         db.prepare(`
             UPDATE devices 
@@ -112,9 +142,17 @@ async function performGlobalSync(db) {
                 client_count = ?,
                 clients_json = ?,
                 essid = ?,
-                mesh_id = ?
+                mesh_id = ?,
+                wifi_mode = ?
             WHERE id = ?
-        `).run(enrichedClients.length, JSON.stringify(enrichedClients), stats.essid || null, stats.mesh_id || null, deviceId);
+        `).run(
+            enrichedClients.length,
+            JSON.stringify(enrichedClients),
+            stats.essid || null,
+            stats.mesh_id || null,
+            stats.wifi_mode || null,
+            deviceId
+        );
     }
 
     console.log(`Global sync completed at ${new Date().toISOString()}`);

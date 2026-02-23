@@ -208,7 +208,10 @@ const Dashboard = () => {
                             </div>
                             {device.status === 'online' && (
                                 <div className="flex flex-col items-end">
-                                    <span className="text-[10px] text-blue-400 font-bold uppercase mb-1">{device.essid || 'No SSID'}</span>
+                                    <span className="text-[10px] text-blue-400 font-bold uppercase mb-1">
+                                        {device.essid || 'No SSID'}
+                                        {device.wifi_mode && <span className="ml-1 text-blue-300">({device.wifi_mode})</span>}
+                                    </span>
                                     <div className="flex items-center text-[10px] font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100">
                                         {device.mesh_id || 'STANDALONE'}
                                     </div>

@@ -83,7 +83,7 @@ const DeviceDashboard = () => {
                 <div className="flex items-center space-x-4">
                     {device?.essid && (
                         <div className="hidden md:flex flex-col items-end mr-2">
-                            <span className="text-[10px] text-gray-400 font-bold uppercase">ESSID</span>
+                            <span className="text-[10px] text-gray-400 font-bold uppercase">ESSID {device.wifi_mode && <span className="text-blue-300 ml-1">({device.wifi_mode})</span>}</span>
                             <span className="text-sm font-bold text-gray-700">{device.essid}</span>
                         </div>
                     )}
