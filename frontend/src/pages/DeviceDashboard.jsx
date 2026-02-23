@@ -10,6 +10,25 @@ const DeviceDashboard = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
+    const [rebooting, setRebooting] = useState(false);
+
+    const handleReboot = async () => {
+        if (!window.confirm(`Are you sure you want to REBOOT ${device?.name}? This will cause a networking outage for its clients.`)) {
+            return;
+        }
+
+        setRebooting(true);
+        try {
+            await api.post(`/devices/${id}/reboot`);
+            alert("Reboot command sent successfully!");
+        } catch (err) {
+            console.error("Reboot failed", err);
+            alert("Failed to send reboot command.");
+        } finally {
+            setRebooting(false);
+        }
+    };
+
     useEffect(() => {
         const fetchDeviceData = async () => {
             try {
@@ -67,8 +86,8 @@ const DeviceDashboard = () => {
                             onClick={handleReboot}
                             disabled={rebooting}
                             className={`flex items-center space-x-2 px-4 py-2 rounded-xl font-bold transition-all shadow-sm border-2 ${rebooting
-                                    ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
-                                    : 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100 hover:border-red-200'
+                                ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+                                : 'bg-red-50 text-red-600 border-red-100 hover:bg-red-100 hover:border-red-200'
                                 }`}
                         >
                             {rebooting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Power className="w-4 h-4" />}
