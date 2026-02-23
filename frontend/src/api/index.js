@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Since the frontend and backend will eventually run on the same Express server in Docker,
 // we default to /api. In dev mode, we might need a proxy.
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 const api = axios.create({
     baseURL: API_URL,
