@@ -44,11 +44,13 @@ You can:
   fuser -k 3000/tcp
   ```
 
-## Running with Docker (Recommended for UNRAID)
+## Running with Docker
 
-This project is Docker-ready, making it easy to deploy on UNRAID or any Docker host.
+This project is Docker-ready and can be deployed on any system running Docker (Linux, Windows, macOS, etc.) or specialized platforms like UNRAID.
 
-### Using Docker Compose
+### Using Docker Compose (Standard)
+
+Docker Compose is the standard way to run the application on most systems (Linux, Windows, macOS). It handles environment variables and volume mappings automatically.
 ```bash
 docker-compose up -d
 ```
@@ -62,6 +64,3 @@ docker-compose up -d
 5. Set the Port mapping:
    - `3000` -> `3000` (or your choice).
 
-## Development
-To contribute, follow the setup steps and ensure your `.agents` directory is ignored by Git.
-Files in `.agents/workflows/` contain specific project skills for AI assistance.
