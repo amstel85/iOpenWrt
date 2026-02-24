@@ -56,11 +56,43 @@ docker-compose up -d
 ```
 
 ### Deployment on UNRAID
-1. Navigate to the **Docker** tab in UNRAID.
-2. Click **Add Container**.
-3. Use `amstel85/iopenwrt` (if published) or build it locally using the `Dockerfile` provided.
-4. Set the following Path mappings:
-   - `/app/data` -> `/mnt/user/appdata/iOpenWRT/data`
-5. Set the Port mapping:
-   - `3000` -> `3000` (or your choice).
+
+For UNRAID users, follow these steps for a complete setup:
+
+#### 1. Installation
+1. Go to the **Docker** tab in your UNRAID dashboard.
+2. Click **Add Container** at the bottom.
+3. Configure the following settings:
+   - **Name:** `iOpenWRT-Controller`
+   - **Repository:** `amstel85/iopenwrt`
+   - **Network Type:** `Bridge` (standard) or your preferred custom network.
+
+#### 2. Port Mapping
+- Click **Add another Path, Port, Variable, Label or Device**.
+- Choose **Port**:
+  - **Container Port:** `3000`
+  - **Host Port:** `3000` (or any available port on your Hosting server).
+
+#### 3. Data Persistence (Crucial)
+To ensure your settings and device list are saved when the container updates:
+- Click **Add another Path, Port, Variable, Label or Device**.
+- Choose **Path**:
+  - **Name:** `App Data`
+  - **Container Path:** `/app/data`
+  - **Host Path:** `/mnt/user/appdata/iOpenWRT/data`
+
+#### 4. Initial Setup (Environment Variables)
+Add these variables to set your initial login credentials:
+- **frontend_user**: Your desired admin username (default: `admin`).
+- **frontend_password**: Your desired admin password (default: `admin_password`).
+
+> [!TIP]
+> After the first run, your data is saved in the SQLite database within the mapped `data` folder.
+
+#### 5. How to Update
+When a new version is released:
+1. Go to the **Docker** tab.
+2. Click **Check for Updates**.
+3. If an update is available, click **Update**.
+4. UNRAID will download the new image and restart the container. Your data will be preserved thanks to the volume mapping in step 3.
 
