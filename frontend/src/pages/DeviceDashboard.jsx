@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Activity, Clock, Cpu, HardDrive, Wifi, ArrowDownToLine, ArrowUpFromLine, Power, RefreshCw } from 'lucide-react';
+import { Activity, Clock, Cpu, HardDrive, Wifi, ArrowDownToLine, ArrowUpFromLine, Power, RefreshCw, Database, Users } from 'lucide-react';
 import api from '../api';
 
 const DeviceDashboard = () => {
@@ -124,77 +124,94 @@ const DeviceDashboard = () => {
             )}
 
             {stats && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mt-8">
-                    {/* CPU Load */}
-                    <div className="bg-white rounded-lg shadow p-6 border border-gray-100">
-                        <div className="flex items-center mb-4">
-                            <div className="p-2 rounded-full bg-indigo-100 text-indigo-600 mr-3">
-                                <Cpu className="w-6 h-6" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mt-8">
+                    {/* CPU Usage */}
+                    <div className="bg-white rounded-2xl shadow-sm p-5 md:p-6 border border-gray-100 group">
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="p-2.5 rounded-xl bg-orange-50 text-orange-600">
+                                <Cpu className="w-5 h-5 md:w-6 md:h-6" />
                             </div>
-                            <h3 className="text-sm font-medium text-gray-500">CPU Load (1m)</h3>
+                            <span className="text-xl md:text-2xl font-black text-gray-900 leading-none">{stats.cpu_usage}%</span>
                         </div>
-                        <p className="text-3xl font-semibold text-gray-900">{stats.load['1m']}</p>
-                        <p className="text-xs text-gray-400 mt-2">5m: {stats.load['5m']} | 15m: {stats.load['15m']}</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">CPU Performance</p>
+                        <div className="mt-3 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-orange-500 rounded-full transition-all duration-1000" style={{ width: `${stats.cpu_usage}%` }}></div>
+                        </div>
                     </div>
 
-                    {/* Memory */}
-                    <div className="bg-white rounded-lg shadow p-6 border border-gray-100">
-                        <div className="flex items-center mb-4">
-                            <div className="p-2 rounded-full bg-blue-100 text-blue-600 mr-3">
-                                <HardDrive className="w-6 h-6" />
+                    {/* Memory Usage */}
+                    <div className="bg-white rounded-2xl shadow-sm p-5 md:p-6 border border-gray-100">
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600">
+                                <Database className="w-5 h-5 md:w-6 md:h-6" />
                             </div>
-                            <h3 className="text-sm font-medium text-gray-500">Memory Used</h3>
+                            <span className="text-xl md:text-2xl font-black text-gray-900 leading-none">{stats.memory_usage}%</span>
                         </div>
-                        <p className="text-3xl font-semibold text-gray-900">{stats.memory.percent}%</p>
-                        <div className="w-full bg-gray-200 rounded-full h-1.5 mt-3 mb-1">
-                            <div className={`h-1.5 rounded-full ${stats.memory.percent > 90 ? 'bg-red-500' : 'bg-blue-600'}`} style={{ width: `${stats.memory.percent}%` }}></div>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Memory Utilized</p>
+                        <div className="mt-3 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-blue-500 rounded-full transition-all duration-1000" style={{ width: `${stats.memory_usage}%` }}></div>
                         </div>
-                        <p className="text-xs text-gray-400 mt-1">{formatBytes(stats.memory.used * 1024)} / {formatBytes(stats.memory.total * 1024)}</p>
                     </div>
 
                     {/* WiFi Clients */}
-                    <div className="bg-white rounded-lg shadow p-6 border border-gray-100">
-                        <div className="flex items-center mb-4">
-                            <div className="p-2 rounded-full bg-teal-100 text-teal-600 mr-3">
-                                <Wifi className="w-6 h-6" />
+                    <div className="bg-white rounded-2xl shadow-sm p-5 md:p-6 border border-gray-100">
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="p-2.5 rounded-xl bg-purple-50 text-purple-600">
+                                <Users className="w-5 h-5 md:w-6 md:h-6" />
                             </div>
-                            <h3 className="text-sm font-medium text-gray-500">Connected Clients</h3>
+                            <span className="text-xl md:text-2xl font-black text-gray-900 leading-none">{stats.clients}</span>
                         </div>
-                        <p className="text-3xl font-semibold text-gray-900">{stats.wifi_clients}</p>
-                        <p className="text-xs text-gray-400 mt-2">Wireless nodes associated</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Active Clients</p>
+                        <p className="text-[11px] text-gray-400 mt-2 font-medium">Monitoring <span className="text-purple-600">{stats.clients_list?.length || 0}</span> local targets</p>
                     </div>
 
                     {/* Uptime */}
-                    <div className="bg-white rounded-lg shadow p-6 border border-gray-100">
-                        <div className="flex items-center mb-4">
-                            <div className="p-2 rounded-full bg-purple-100 text-purple-600 mr-3">
-                                <Clock className="w-6 h-6" />
+                    <div className="bg-white rounded-2xl shadow-sm p-5 md:p-6 border border-gray-100">
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600">
+                                <Clock className="w-5 h-5 md:w-6 md:h-6" />
                             </div>
-                            <h3 className="text-sm font-medium text-gray-500">Uptime</h3>
+                            <span className="text-sm md:text-base font-black text-gray-900 truncate ml-2">{stats.uptime}</span>
                         </div>
-                        <p className="text-3xl font-semibold text-gray-900">{formatUptime(stats.uptime)}</p>
-                        <p className="text-xs text-gray-400 mt-2">Time since last boot</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">System Uptime</p>
+                        <p className="text-[11px] text-emerald-600 font-bold mt-2 uppercase tracking-tighter">Node is Healthy</p>
                     </div>
 
-                    {/* Traffic Stats (Full Width) */}
-                    <div className="col-span-1 md:col-span-2 lg:col-span-4 bg-white rounded-lg shadow p-6 border border-gray-100 mt-4">
-                        <h3 className="text-lg font-medium text-gray-900 mb-6 flex items-center">
-                            <Activity className="w-5 h-5 mr-2 text-gray-400" /> Interface Traffic (Since Boot)
-                        </h3>
-                        <div className="grid grid-cols-2 gap-8">
-                            <div>
-                                <div className="flex items-center text-gray-500 mb-2">
-                                    <ArrowDownToLine className="w-4 h-4 mr-2 text-green-500" />
-                                    <span>Total Download (RX)</span>
-                                </div>
-                                <p className="text-2xl font-bold text-gray-900">{formatBytes(stats.network.rx_bytes)}</p>
+                    {/* Traffic Stats (Full Width on Large, Stacked on Small) */}
+                    <div className="col-span-1 sm:col-span-2 lg:col-span-4 bg-white rounded-2xl shadow-sm p-5 md:p-8 border border-gray-100 mt-4">
+                        <div className="flex items-center justify-between mb-8 pb-4 border-b border-gray-50">
+                            <div className="flex items-center">
+                                <Globe className="w-5 h-5 text-blue-500 mr-2" />
+                                <h3 className="text-lg font-bold text-gray-900 tracking-tight">Real-time Interface Traffic</h3>
                             </div>
-                            <div>
-                                <div className="flex items-center text-gray-500 mb-2">
-                                    <ArrowUpFromLine className="w-4 h-4 mr-2 text-blue-500" />
-                                    <span>Total Upload (TX)</span>
+                            <span className="text-[10px] font-black text-gray-300 uppercase animate-pulse">Live Stream</span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 md:gap-12">
+                            <div className="space-y-4">
+                                <div className="flex justify-between text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                    <span>Download Speed</span>
+                                    <span className="text-emerald-500">RX Traffic</span>
                                 </div>
-                                <p className="text-2xl font-bold text-gray-900">{formatBytes(stats.network.tx_bytes)}</p>
+                                <div className="flex items-baseline">
+                                    <span className="text-3xl md:text-4xl font-black text-gray-900 mr-2">{stats.traffic_rx}</span>
+                                    <span className="text-sm font-bold text-gray-400">Mbps</span>
+                                </div>
+                                <div className="h-2 w-full bg-gray-50 rounded-full overflow-hidden">
+                                    <div className="h-full bg-emerald-500 animate-pulse" style={{ width: '65%' }}></div>
+                                </div>
+                            </div>
+                            <div className="space-y-4">
+                                <div className="flex justify-between text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                    <span>Upload Speed</span>
+                                    <span className="text-blue-500">TX Traffic</span>
+                                </div>
+                                <div className="flex items-baseline">
+                                    <span className="text-3xl md:text-4xl font-black text-gray-900 mr-2">{stats.traffic_tx}</span>
+                                    <span className="text-sm font-bold text-gray-400">Mbps</span>
+                                </div>
+                                <div className="h-2 w-full bg-gray-50 rounded-full overflow-hidden">
+                                    <div className="h-full bg-blue-500" style={{ width: '25%' }}></div>
+                                </div>
                             </div>
                         </div>
                     </div>

@@ -65,6 +65,10 @@ function initDb() {
     const hasClientsJson = columns.some(c => c.name === 'clients_json');
     const hasMeshId = columns.some(c => c.name === 'mesh_id');
     const hasEssid = columns.some(c => c.name === 'essid');
+    const hasIsGateway = columns.some(c => c.name === 'is_gateway');
+    const hasPort = columns.some(c => c.name === 'port');
+
+    const hasLastError = columns.some(c => c.name === 'last_error');
 
     if (!hasClientCount) {
         db.exec("ALTER TABLE devices ADD COLUMN client_count INTEGER DEFAULT 0");
@@ -77,6 +81,15 @@ function initDb() {
     }
     if (!hasEssid) {
         db.exec("ALTER TABLE devices ADD COLUMN essid TEXT");
+    }
+    if (!hasIsGateway) {
+        db.exec("ALTER TABLE devices ADD COLUMN is_gateway BOOLEAN DEFAULT 0");
+    }
+    if (!hasPort) {
+        db.exec("ALTER TABLE devices ADD COLUMN port INTEGER DEFAULT 22");
+    }
+    if (!hasLastError) {
+        db.exec("ALTER TABLE devices ADD COLUMN last_error TEXT");
     }
 
     console.log("Database initialized at", dbPath);
