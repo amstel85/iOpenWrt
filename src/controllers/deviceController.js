@@ -5,13 +5,13 @@ const { getDeviceStats } = require('../services/deviceStats');
 const deviceController = {
     getAll: async (request, reply) => {
         // Return devices (omit sensitive fields like keys/passwords for safety)
-        const devices = db.prepare('SELECT id, name, ip, username, auth_type, status, client_count, clients_json, last_seen, created_at FROM devices').all();
+        const devices = db.prepare('SELECT id, name, ip, username, auth_type, status, client_count, clients_json, last_seen, created_at, is_gateway, essid, mesh_id, port, last_error FROM devices').all();
         return devices;
     },
 
     getById: async (request, reply) => {
         const { id } = request.params;
-        const device = db.prepare('SELECT id, name, ip, username, auth_type, status, client_count, clients_json, last_seen, created_at FROM devices WHERE id = ?').get(id);
+        const device = db.prepare('SELECT id, name, ip, username, auth_type, status, client_count, clients_json, last_seen, created_at, is_gateway, essid, mesh_id, port, last_error FROM devices WHERE id = ?').get(id);
         if (!device) {
             return reply.status(404).send({ error: "Device not found" });
         }
@@ -20,7 +20,7 @@ const deviceController = {
 
     getStats: async (request, reply) => {
         const { id } = request.params;
-        const device = db.prepare('SELECT id, name, ip, username, auth_type, password, private_key FROM devices WHERE id = ?').get(id);
+        const device = db.prepare('SELECT id, name, ip, username, auth_type, password, private_key, port FROM devices WHERE id = ?').get(id);
         if (!device) {
             return reply.status(404).send({ error: "Device not found" });
         }
@@ -36,24 +36,14 @@ const deviceController = {
     },
 
     add: async (request, reply) => {
-        const { name, ip, username = 'root', auth_type, password, private_key } = request.body;
-
-        if (!name || !ip) {
-            return reply.status(400).send({ error: "Name and IP are required" });
-        }
-        if (auth_type === 'password' && !password) {
-            return reply.status(400).send({ error: "Password is required when auth_type is password" });
-        }
-        if (auth_type === 'key' && !private_key) {
-            return reply.status(400).send({ error: "Private key is required when auth_type is key" });
-        }
-
+        const { name, ip, username = 'root', auth_type, password, private_key, port } = request.body;
+        const validPort = parseInt(port) || 22;
         try {
             const stmt = db.prepare(`
-                INSERT INTO devices (name, ip, username, auth_type, password, private_key)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO devices (name, ip, username, auth_type, password, private_key, is_gateway, port)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `);
-            const info = stmt.run(name, ip, username, auth_type, password, private_key);
+            const info = stmt.run(name, ip, username, auth_type, password, private_key, request.body.is_gateway ? 1 : 0, validPort);
 
             // Fetch the inserted device and check its connection immediately
             const newDevice = db.prepare('SELECT * FROM devices WHERE id = ?').get(info.lastInsertRowid);
@@ -70,10 +60,8 @@ const deviceController = {
 
     update: async (request, reply) => {
         const { id } = request.params;
-        const { name, ip, username, auth_type, password, private_key } = request.body;
+        const { name, ip, username, auth_type, password, private_key, port } = request.body;
 
-        // Simple approach: update all provided fields
-        // In a strict API, you'd build the query dynamically based on what was provided.
         const stmt = db.prepare(`
             UPDATE devices 
             SET name = COALESCE(?, name),
@@ -81,11 +69,28 @@ const deviceController = {
                 username = COALESCE(?, username),
                 auth_type = COALESCE(?, auth_type),
                 password = COALESCE(?, password),
-                private_key = COALESCE(?, private_key)
+                private_key = COALESCE(?, private_key),
+                is_gateway = COALESCE(?, is_gateway),
+                port = COALESCE(?, port)
             WHERE id = ?
         `);
 
-        const info = stmt.run(name, ip, username, auth_type, password, private_key, id);
+        // If another device is set as gateway, it could be tricky. 
+        // For now just update this one.
+        const isGatewayVal = request.body.is_gateway !== undefined ? (request.body.is_gateway ? 1 : 0) : null;
+        const portVal = (port !== undefined && port !== null && !isNaN(parseInt(port))) ? parseInt(port) : null;
+
+        const info = stmt.run(
+            name !== undefined ? name : null,
+            ip !== undefined ? ip : null,
+            username !== undefined ? username : null,
+            auth_type !== undefined ? auth_type : null,
+            password !== undefined ? password : null,
+            private_key !== undefined ? private_key : null,
+            isGatewayVal,
+            portVal,
+            id
+        );
 
         if (info.changes === 0) {
             return reply.status(404).send({ error: "Device not found" });

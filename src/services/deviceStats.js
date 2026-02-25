@@ -22,19 +22,21 @@ async function getDeviceStats(device) {
         echo "---NET---"
         ifconfig br-lan 2>/dev/null || ifconfig eth0 2>/dev/null
         echo "---LEASES---"
-        cat /tmp/dhcp.leases 2>/dev/null
+        ${device.is_gateway ? 'cat /tmp/dhcp.leases 2>/dev/null || cat /var/lib/misc/dnsmasq.leases 2>/dev/null || cat /tmp/var/lib/misc/dnsmasq.leases 2>/dev/null || ip neigh show 2>/dev/null' : 'cat /tmp/dhcp.leases 2>/dev/null'}
         echo "---ARP---"
         cat /proc/net/arp 2>/dev/null
         echo "---WIFI---"
         iwinfo 2>/dev/null | grep ESSID | cut -d" " -f1 | while read iface; do iwinfo $iface assoclist 2>/dev/null; done
         echo "---NEIGH---"
         ip neigh show 2>/dev/null
+        echo "---DHCP_CONF---"
+        cat /etc/config/dhcp 2>/dev/null
         echo "---WIFI_INFO_DETAIL---"
         iwinfo 2>/dev/null | grep ESSID | cut -d" " -f1 | while read iface; do echo "IFACE: $iface"; iwinfo $iface info 2>/dev/null; done
     `;
 
     try {
-        const rawOutput = await executeCommand(device.ip, device.username, auth, cmd);
+        const rawOutput = await executeCommand(device.ip, device.username, auth, cmd, device.port || 22);
         return parseStats(rawOutput);
     } catch (error) {
         throw new Error(`Failed to fetch stats: ${error.message}`);
@@ -54,6 +56,7 @@ function parseStats(raw) {
 
     let leases = [];
     let arp = {};
+    let dhcp_hosts = {}; // map mac -> name
     let wifiMacs = [];
     const clientMap = new Map();
 
@@ -97,9 +100,17 @@ function parseStats(raw) {
         }
         else if (section === 'LEASES') {
             content.split('\n').forEach(line => {
-                const parts = line.trim().split(' ');
-                if (parts.length >= 4) {
+                const parts = line.trim().split(/\s+/);
+                // dnsmasq format: timestamp mac ip name client_id (optional)
+                if (parts.length >= 4 && parts[1].includes(':')) {
                     leases.push({ mac: parts[1].toLowerCase(), ip: parts[2], name: parts[3] !== '*' ? parts[3] : 'Unknown' });
+                }
+                // ip neigh format: 10.0.0.X dev br-lan lladdr mac STALE
+                else if (parts.length >= 5 && parts.includes('lladdr')) {
+                    const mac = parts[parts.indexOf('lladdr') + 1];
+                    if (mac && mac.includes(':')) {
+                        leases.push({ mac: mac.toLowerCase(), ip: parts[0], name: 'Unknown' });
+                    }
                 }
             });
         }
@@ -107,21 +118,24 @@ function parseStats(raw) {
             content.split('\n').forEach(line => {
                 const parts = line.trim().split(/\s+/);
                 if (parts.length >= 4 && parts[3].includes(':')) {
-                    arp[parts[3].toLowerCase()] = parts[0];
+                    const mac = parts[3].toLowerCase();
+                    const ip = parts[0];
+                    // Prioritize IPv4 (simple check for dots)
+                    if (ip.includes('.')) {
+                        arp[mac] = ip;
+                    } else if (!arp[mac]) {
+                        arp[mac] = ip;
+                    }
                 }
             });
         }
         else if (section === 'WIFI') {
             const lines = content.split('\n');
             lines.forEach(line => {
-                // Look for MAC and RSSI (signal)
-                // Format usually: MAC  RSSI  SNR  ...
                 const macMatch = line.match(/([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})/);
                 if (macMatch) {
                     const mac = macMatch[0].toLowerCase();
                     wifiMacs.push(mac);
-
-                    // Try to find RSSI (usually the first negative number after the MAC)
                     const rssiMatch = line.match(/-\d+/);
                     const rssi = rssiMatch ? parseInt(rssiMatch[0]) : null;
 
@@ -137,14 +151,32 @@ function parseStats(raw) {
         else if (section === 'NEIGH') {
             content.split('\n').forEach(line => {
                 const parts = line.trim().split(/\s+/);
-                // Usually: 192.168.1.10 dev br-lan lladdr 00:11:22:33:44:55 REACHABLE
                 if (parts.length >= 5) {
                     const ip = parts[0];
                     const macIndex = parts.indexOf('lladdr');
                     if (macIndex !== -1 && parts[macIndex + 1]) {
                         const mac = parts[macIndex + 1].toLowerCase();
-                        if (!arp[mac]) arp[mac] = ip;
+                        // Prioritize IPv4
+                        if (ip.includes('.')) {
+                            arp[mac] = ip;
+                        } else if (!arp[mac]) {
+                            arp[mac] = ip;
+                        }
                     }
+                }
+            });
+        }
+        else if (section === 'DHCP_CONF') {
+            // Parse uci-style config host
+            const hostBlocks = content.split('config host');
+            hostBlocks.forEach(block => {
+                const macMatch = block.match(/option mac\s+'([^']+)'/) || block.match(/option mac\s+"([^"]+)"/);
+                const nameMatch = block.match(/option name\s+'([^']+)'/) || block.match(/option name\s+"([^"]+)"/);
+                if (macMatch && nameMatch) {
+                    const macs = macMatch[1].toLowerCase().split(' ');
+                    macs.forEach(mac => {
+                        dhcp_hosts[mac] = nameMatch[1];
+                    });
                 }
             });
         }
@@ -161,11 +193,10 @@ function parseStats(raw) {
         }
     }
 
-    // We no longer correlate inside parseStats because we need global data from all routers.
-    // We return the raw collected info for the manager to aggregate.
     stats.raw_leases = leases;
     stats.raw_arp = arp;
-    stats.wifi_macs = Array.from(clientMap.values()); // Includes MAC and RSSI
+    stats.dhcp_hosts = dhcp_hosts;
+    stats.wifi_macs = Array.from(clientMap.values());
 
     return stats;
 }

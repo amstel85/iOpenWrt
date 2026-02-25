@@ -1,200 +1,186 @@
 const { executeCommand } = require('./sshService');
-
-/**
- * Execute a command on multiple routers in parallel with a concurrency limit.
- * 
- * @param {Array<Object>} routers - List of router objects { ip, username, auth }
- * @param {string} cmd - Command to execute
- * @param {number} concurrencyLimit - Maximum number of concurrent SSH connections
- * @returns {Promise<Array<Object>>} Array of results { ip, output, error }
- */
-async function executeOnMultiple(routers, cmd, concurrencyLimit = 5) {
-    const results = [];
-    let currentIndex = 0;
-
-    async function worker() {
-        while (currentIndex < routers.length) {
-            const index = currentIndex++;
-            const router = routers[index];
-            try {
-                const output = await executeCommand(router.ip, router.username, router.auth, cmd);
-                results[index] = { ip: router.ip, output, error: null };
-            } catch (error) {
-                results[index] = { ip: router.ip, output: null, error: error.message };
-            }
-        }
-    }
-
-    const workers = [];
-    const actualConcurrency = Math.min(concurrencyLimit, routers.length);
-    for (let i = 0; i < actualConcurrency; i++) {
-        workers.push(worker());
-    }
-
-    await Promise.all(workers);
-    return results;
-}
-
+const fs = require('fs');
+const dns = require('dns').promises;
+const { exec } = require('child_process');
 const { getDeviceStats } = require('./deviceStats');
 const { getManufacturer } = require('./ouiService');
 
 /**
- * Perform a global sync of all devices, aggregating leases to resolve AP clients
+ * Get internal ARP table from the controller host
+ */
+async function getLocalArp() {
+    try {
+        const data = fs.readFileSync('/proc/net/arp', 'utf8');
+        const arp = {};
+        data.split('\n').forEach(line => {
+            const parts = line.trim().split(/\s+/);
+            if (parts.length >= 4 && parts[3].includes(':')) {
+                const ip = parts[0];
+                const mac = parts[3].toLowerCase();
+                if (ip.includes('.')) arp[mac] = ip;
+            }
+        });
+        return arp;
+    } catch (e) {
+        return {};
+    }
+}
+
+/**
+ * Perform a background sweep of the subnet
+ */
+async function sweepSubnet() {
+    console.log(`[DISCOVERY] Starting active subnet sweep...`);
+    const base = '10.0.0';
+    const pings = [];
+    for (let i = 1; i <= 254; i++) {
+        pings.push(new Promise((resolve) => {
+            exec(`ping -c 1 -W 1 ${base}.${i}`, (err) => resolve());
+        }));
+    }
+    await Promise.all(pings);
+    console.log(`[DISCOVERY] Subnet sweep completed.`);
+}
+
+async function resolveHostname(ip) {
+    if (!ip || ip === '?.?.?.?' || ip.includes(':')) return null;
+    try {
+        const names = await dns.reverse(ip);
+        return names && names.length > 0 ? names[0].split('.')[0] : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Perform a global sync of all devices
  */
 async function performGlobalSync(db) {
-    const devices = db.prepare('SELECT id, name, ip, username, auth_type, password, private_key FROM devices').all();
+    const devices = db.prepare('SELECT id, name, ip, username, auth_type, password, private_key, is_gateway, port FROM devices').all();
     const allDeviceStats = [];
-    // 0. Fetch registry for persistent naming
+    const globalLeaseMap = new Map();
+
     const registry = db.prepare('SELECT mac, custom_name FROM client_registry').all();
     const registryMap = new Map(registry.map(r => [r.mac, r.custom_name]));
 
-    // 1. Fetch stats from all devices in parallel
+    const localArp = await getLocalArp();
+    Object.entries(localArp).forEach(([mac, ip]) => {
+        globalLeaseMap.set(mac, { ip, name: 'Unknown' });
+    });
+
     const promises = devices.map(async (device) => {
         try {
             const stats = await getDeviceStats(device);
-            allDeviceStats.push({ deviceId: device.id, deviceName: device.name, stats });
+            allDeviceStats.push({ deviceId: device.id, deviceName: device.name, stats, is_gateway: device.is_gateway });
+            db.prepare("UPDATE devices SET last_error = NULL WHERE id = ?").run(device.id);
 
-            // Collect leases for global resolution
             if (stats.raw_leases) {
                 stats.raw_leases.forEach(lease => {
-                    globalLeaseMap.set(lease.mac, { ip: lease.ip, name: lease.name });
+                    const existing = globalLeaseMap.get(lease.mac);
+                    const shouldUpdate = !existing || device.is_gateway || existing.name === 'Unknown';
+                    if (shouldUpdate) {
+                        globalLeaseMap.set(lease.mac, {
+                            ip: (existing && existing.ip.includes('.') && !lease.ip.includes('.')) ? existing.ip : lease.ip,
+                            name: lease.name
+                        });
+                    }
                 });
             }
-            // Also collect ARP/Neighbor info as fallback
+
+            if (stats.dhcp_hosts) {
+                Object.entries(stats.dhcp_hosts).forEach(([mac, name]) => {
+                    const existing = globalLeaseMap.get(mac);
+                    if (!existing || existing.name === 'Unknown') {
+                        globalLeaseMap.set(mac, { ip: existing ? existing.ip : '?.?.?.?', name });
+                    }
+                });
+            }
+
             if (stats.raw_arp) {
                 Object.entries(stats.raw_arp).forEach(([mac, ip]) => {
-                    if (!globalLeaseMap.has(mac) || globalLeaseMap.get(mac).ip === '?.?.?.?') {
-                        globalLeaseMap.set(mac, { ip, name: 'Unknown' });
+                    const existing = globalLeaseMap.get(mac);
+                    const isBetterIP = ip.includes('.') && (!existing || existing.ip === '?.?.?.?');
+                    if (!existing || isBetterIP) {
+                        globalLeaseMap.set(mac, { ip, name: existing ? existing.name : 'Unknown' });
                     }
                 });
             }
         } catch (error) {
-            console.error(`Sync failed for ${device.name}:`, error.message);
-            db.prepare("UPDATE devices SET status = 'offline' WHERE id = ?").run(device.id);
+            console.error(`[SYNC] Failed for ${device.name}: ${error.message}`);
+            db.prepare("UPDATE devices SET status = 'offline', last_error = ? WHERE id = ?").run(error.message, device.id);
         }
     });
 
     await Promise.allSettled(promises);
 
-    // 2. Enrich and update each device
     for (const { deviceId, deviceName, stats } of allDeviceStats) {
-        // Get previous client state to detect new joins
         const prevDevice = db.prepare('SELECT clients_json, status FROM devices WHERE id = ?').get(deviceId);
         const prevClients = prevDevice?.clients_json ? JSON.parse(prevDevice.clients_json) : [];
         const prevMacs = new Set(prevClients.map(c => c.mac));
 
-        const enrichedClients = stats.wifi_macs.map(wifiClient => {
-            const globalInfo = globalLeaseMap.get(wifiClient.mac) || { ip: '?.?.?.?', name: 'Wireless Client' };
+        const enrichedClients = await Promise.all(stats.wifi_macs.map(async wifiClient => {
+            const globalInfo = globalLeaseMap.get(wifiClient.mac) || { ip: '?.?.?.?', name: 'Unknown' };
+            if (globalInfo.name === 'Unknown') {
+                const dnsName = await resolveHostname(globalInfo.ip);
+                if (dnsName) globalInfo.name = dnsName;
+            }
+
             const persistentName = registryMap.get(wifiClient.mac);
+            const manufacturer = getManufacturer(wifiClient.mac);
+            let finalName = persistentName || globalInfo.name;
+            if (finalName === 'Unknown' || !finalName) {
+                finalName = manufacturer !== 'Unknown' ? `${manufacturer} Device` : 'Unknown Device';
+            }
 
             const client = {
                 mac: wifiClient.mac,
                 ip: globalInfo.ip,
-                name: persistentName || globalInfo.name, // Priority to custom name
+                name: finalName,
                 rssi: wifiClient.rssi,
-                manufacturer: getManufacturer(wifiClient.mac),
+                manufacturer: manufacturer,
+                routerName: deviceName,
                 type: 'wireless'
             };
 
-            // Alert for new device
             if (prevDevice?.status === 'online' && !prevMacs.has(client.mac)) {
                 const { sendTelegramAlert } = require('./telegramService');
-                sendTelegramAlert(`🆕 *New Client Connected*\nDevice: ${client.name}\nMAC: \`${client.mac}\`\nIP: ${client.ip}\nRouter: ${deviceName}`);
+                sendTelegramAlert(`🆕 *New Client Connected*\nDevice: ${client.name}\nMAC: \`${client.mac}\`\nRouter: ${deviceName}`);
             }
-
             return client;
-        });
-
-        // Also add wired clients if this router has local leases that aren't wireless
-        if (stats.raw_leases) {
-            stats.raw_leases.forEach(lease => {
-                const isWireless = stats.wifi_macs.some(w => w.mac === lease.mac);
-                if (!isWireless) {
-                    const persistentName = registryMap.get(lease.mac);
-                    const client = {
-                        mac: lease.mac,
-                        ip: lease.ip,
-                        name: persistentName || lease.name,
-                        rssi: null,
-                        manufacturer: getManufacturer(lease.mac),
-                        type: 'wired'
-                    };
-
-                    if (prevDevice?.status === 'online' && !prevMacs.has(client.mac)) {
-                        const { sendTelegramAlert } = require('./telegramService');
-                        sendTelegramAlert(`🆕 *New Wired Client*\nDevice: ${client.name}\nMAC: \`${client.mac}\`\nIP: ${client.ip}\nRouter: ${deviceName}`);
-                    }
-
-                    enrichedClients.push(client);
-                }
-            });
-        }
-
-        // Migration check for wifi_mode column (inline for simplicity in this specific task)
-        try {
-            db.prepare(`ALTER TABLE devices ADD COLUMN wifi_mode TEXT`).run();
-        } catch (e) { /* already exists */ }
+        }));
 
         db.prepare(`
-            UPDATE devices 
-            SET status = 'online', 
-                last_seen = CURRENT_TIMESTAMP,
-                client_count = ?,
-                clients_json = ?,
-                essid = ?,
-                mesh_id = ?,
-                wifi_mode = ?
+            UPDATE devices SET status = 'online', last_seen = CURRENT_TIMESTAMP, client_count = ?, clients_json = ?, essid = ?, mesh_id = ?, wifi_mode = ?
             WHERE id = ?
-        `).run(
-            enrichedClients.length,
-            JSON.stringify(enrichedClients),
-            stats.essid || null,
-            stats.mesh_id || null,
-            stats.wifi_mode || null,
-            deviceId
-        );
+        `).run(enrichedClients.length, JSON.stringify(enrichedClients), stats.essid || null, stats.mesh_id || null, stats.wifi_mode || null, deviceId);
     }
-
-    console.log(`Global sync completed at ${new Date().toISOString()}`);
+    console.log(`Global sync completed.`);
 }
 
-/**
- * Check a single device's status (Used during Add Device)
- */
 async function checkDeviceStatus(db, device) {
     try {
         await getDeviceStats(device);
-        db.prepare("UPDATE devices SET status = 'online', last_seen = CURRENT_TIMESTAMP WHERE id = ?").run(device.id);
-        // Trigger a global sync shortly after adding a device to populate clients
+        db.prepare("UPDATE devices SET status = 'online', last_seen = CURRENT_TIMESTAMP, last_error = NULL WHERE id = ?").run(device.id);
         setTimeout(() => performGlobalSync(db), 1000);
-        return true;
+        return { success: true };
     } catch (error) {
-        db.prepare("UPDATE devices SET status = 'offline' WHERE id = ?").run(device.id);
-        return false;
+        db.prepare("UPDATE devices SET status = 'offline', last_error = ? WHERE id = ?").run(error.message, device.id);
+        return { success: false, error: error.message };
     }
 }
 
-/**
- * Background monitor to check all devices every 30 seconds
- */
 function startStatusMonitor(db) {
-    // Initial sync
     performGlobalSync(db);
-
-    setInterval(async () => {
-        await performGlobalSync(db);
-    }, 30000); // 30 seconds
+    sweepSubnet();
+    setInterval(() => performGlobalSync(db), 30000);
+    setInterval(() => sweepSubnet(), 300000);
 }
 
 async function rebootDevice(db, id) {
-    const device = db.prepare('SELECT ip, username, auth_type, password, private_key FROM devices WHERE id = ?').get(id);
+    const device = db.prepare('SELECT ip, username, auth_type, password, private_key, port FROM devices WHERE id = ?').get(id);
     if (!device) throw new Error("Device not found");
-
     const auth = device.auth_type === 'password' ? { password: device.password } : { privateKey: device.private_key };
-    const { executeCommand } = require('./sshService');
-
-    console.log(`Sending reboot command to ${device.ip}`);
-    return await executeCommand(device.ip, device.username, auth, 'reboot');
+    return await executeCommand(device.ip, device.username, auth, 'reboot', device.port || 22);
 }
 
-module.exports = { executeOnMultiple, checkDeviceStatus, startStatusMonitor, performGlobalSync, rebootDevice };
+module.exports = { checkDeviceStatus, startStatusMonitor, performGlobalSync, rebootDevice };

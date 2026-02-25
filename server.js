@@ -17,6 +17,7 @@ fastify.register(require('@fastify/static'), {
 // Require Controllers
 const authController = require('./src/controllers/authController');
 const deviceController = require('./src/controllers/deviceController');
+const clientController = require('./src/controllers/clientController');
 
 // Global Error Handler
 fastify.setErrorHandler(function (error, request, reply) {
@@ -41,6 +42,9 @@ fastify.register(async function (protectedRoutes) {
     protectedRoutes.delete('/api/devices/:id', deviceController.remove);
     protectedRoutes.post('/api/network/sync', deviceController.syncAll);
     protectedRoutes.post('/api/devices/:id/reboot', deviceController.reboot);
+
+    // Client Registry
+    protectedRoutes.post('/api/clients/register', clientController.register);
 });
 
 // For React Router: Redirect all non-API GET requests to index.html
