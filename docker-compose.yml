@@ -3,7 +3,7 @@ services:
     image: amstel/iopenwrt:latest
     container_name: iopenwrt-controller
     ports:
-      - "${PORT:-3000}:${PORT:-3000}"
+      - "${PORT:-8780}:${PORT:-8780}"
     volumes:
       - /mnt/user/appdata/iOpenWRT/data:/app/data
     restart: unless-stopped

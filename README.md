@@ -36,12 +36,12 @@ npm start
 ```
 
 ### Troubleshooting: Port already in use
-If you see an error like `EADDRINUSE: address already in use 0.0.0.0:3000`, it means another process is using port 3000.
+If you see an error like `EADDRINUSE: address already in use 0.0.0.0:8780`, it means another process is using port 8780.
 You can:
 - Change the `PORT` in your `.env` file.
 - Or find and kill the process:
   ```bash
-  fuser -k 3000/tcp
+  fuser -k 8780/tcp
   ```
 
 ## Running with Docker
@@ -64,14 +64,14 @@ For UNRAID users, follow these steps for a complete setup:
 2. Click **Add Container** at the bottom.
 3. Configure the following settings:
    - **Name:** `iOpenWRT-Controller`
-   - **Repository:** `amstel85/iopenwrt`
+   - **Repository:** `amstel/iopenwrt`
    - **Network Type:** `Bridge` (standard) or your preferred custom network.
 
 #### 2. Port Mapping
 - Click **Add another Path, Port, Variable, Label or Device**.
 - Choose **Port**:
-  - **Container Port:** `3000`
-  - **Host Port:** `3000` (or any available port on your Hosting server).
+  - **Container Port:** `8780`
+  - **Host Port:** `8780` (or any available port on your Hosting server).
 
 #### 3. Data Persistence (Crucial)
 To ensure your settings and device list are saved when the container updates:

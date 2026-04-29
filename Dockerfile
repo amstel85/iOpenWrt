@@ -28,6 +28,6 @@ RUN mkdir -p data
 # Copy built frontend from previous stage
 COPY --from=frontend-build /app/frontend/dist ./frontend/dist
 
-EXPOSE 3000
+EXPOSE 8780
 
 CMD ["node", "server.js"]

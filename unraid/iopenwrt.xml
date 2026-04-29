@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>iOpenWRT</Name>
+  <Repository>amstel/iopenwrt:latest</Repository>
+  <Registry>https://hub.docker.com/r/amstel/iopenwrt</Registry>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/amstel85/iOpenWrt/issues</Support>
+  <Project>https://github.com/amstel85/iOpenWrt</Project>
+  <Overview>Web-based controller and monitor for OpenWrt routers. Manage and monitor your network devices over SSH/ubus from a single dashboard. Includes device discovery, status monitoring, and a built-in SQLite database for persistence. After install, browse to the WebUI and sign in with the username/password you set below.</Overview>
+  <Category>Network:Management Tools: Network:Other:</Category>
+  <WebUI>http://[IP]:[PORT:8780]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/amstel85/unraid-templates/main/iopenwrt.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/amstel85/unraid-templates/main/iopenwrt.png</Icon>
+  <ExtraParams/>
+  <PostArgs/>
+  <CPUset/>
+  <DateInstalled/>
+  <DonateText/>
+  <DonateLink/>
+  <Description>Web-based controller and monitor for OpenWrt routers. Manage and monitor your network devices over SSH/ubus from a single dashboard.&#xD;
+&#xD;
+After the container starts, open the WebUI and sign in with the credentials you set below. All data (device list, settings, users) is persisted in the mapped /app/data SQLite database.</Description>
+  <Networking>
+    <Mode>bridge</Mode>
+    <Publish>
+      <Port>
+        <HostPort>8780</HostPort>
+        <ContainerPort>8780</ContainerPort>
+        <Protocol>tcp</Protocol>
+      </Port>
+    </Publish>
+  </Networking>
+  <Data>
+    <Volume>
+      <HostDir>/mnt/user/appdata/iOpenWRT/data</HostDir>
+      <ContainerDir>/app/data</ContainerDir>
+      <Mode>rw</Mode>
+    </Volume>
+  </Data>
+  <Environment>
+    <Variable>
+      <Value>admin</Value>
+      <Name>frontend_user</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>admin_password</Value>
+      <Name>frontend_password</Name>
+      <Mode/>
+    </Variable>
+    <Variable>
+      <Value>8780</Value>
+      <Name>PORT</Name>
+      <Mode/>
+    </Variable>
+  </Environment>
+  <Config Name="WebUI Port" Target="8780" Default="8780" Mode="tcp" Description="Port the iOpenWRT web interface listens on inside the container. Most users should leave this at 8780 and only change the host-side port mapping if 8780 is taken on the host." Type="Port" Display="always" Required="true" Mask="false">8780</Config>
+  <Config Name="App Data" Target="/app/data" Default="/mnt/user/appdata/iOpenWRT/data" Mode="rw" Description="Persistent storage for the SQLite database (device list, users, settings). Do NOT delete this on update or you will lose your configuration." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/iOpenWRT/data</Config>
+  <Config Name="Admin Username" Target="frontend_user" Default="admin" Mode="" Description="Initial admin username for the iOpenWRT web UI. Used only on first run to seed the user; later changes should be done in the UI." Type="Variable" Display="always" Required="true" Mask="false">admin</Config>
+  <Config Name="Admin Password" Target="frontend_password" Default="admin_password" Mode="" Description="Initial admin password for the iOpenWRT web UI. CHANGE THIS before exposing the container." Type="Variable" Display="always" Required="true" Mask="true">admin_password</Config>
+  <Config Name="Internal Port" Target="PORT" Default="8780" Mode="" Description="Port the Node.js server inside the container binds to. Must match the WebUI Port above. Advanced users only." Type="Variable" Display="advanced-hide" Required="false" Mask="false">8780</Config>
+</Container>
