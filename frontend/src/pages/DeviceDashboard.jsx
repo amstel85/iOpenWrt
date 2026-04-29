@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { Activity, Clock, Cpu, HardDrive, Wifi, ArrowDownToLine, ArrowUpFromLine, Power, RefreshCw, Database, Users } from 'lucide-react';
+import { Activity, Clock, Cpu, HardDrive, Wifi, ArrowDownToLine, ArrowUpFromLine, Power, RefreshCw, Database, Users, Globe } from 'lucide-react';
 import api from '../api';
 
 const DeviceDashboard = () => {
