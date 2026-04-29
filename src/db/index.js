@@ -69,6 +69,7 @@ function initDb() {
     const hasPort = columns.some(c => c.name === 'port');
 
     const hasLastError = columns.some(c => c.name === 'last_error');
+    const hasWifiMode = columns.some(c => c.name === 'wifi_mode');
 
     if (!hasClientCount) {
         db.exec("ALTER TABLE devices ADD COLUMN client_count INTEGER DEFAULT 0");
@@ -90,6 +91,9 @@ function initDb() {
     }
     if (!hasLastError) {
         db.exec("ALTER TABLE devices ADD COLUMN last_error TEXT");
+    }
+    if (!hasWifiMode) {
+        db.exec("ALTER TABLE devices ADD COLUMN wifi_mode TEXT");
     }
 
     console.log("Database initialized at", dbPath);
