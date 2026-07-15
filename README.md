@@ -43,6 +43,17 @@ So this tool:
 Devices that are not running OpenWrt (for example a stock ASUS router used as the gateway) are
 detected and shown as unsupported rather than failing.
 
+## Quick start for maintainers
+
+```bash
+./menu.sh
+```
+
+An interactive menu covering the whole loop: run checks, build, run locally
+(against a throwaway database, without touching real routers), commit, push,
+publish the Docker image, and verify that what is on Docker Hub is actually your
+latest commit.
+
 ## Setup
 
 1. **Clone the repository:**
