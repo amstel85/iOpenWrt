@@ -88,11 +88,19 @@ const Dashboard = () => {
     const totalClients = allClients.length;
 
     // Mesh Consistency Audit
+    //
+    // Only devices that actually report wireless identity can be audited. Non-OpenWrt units (and
+    // any router without iwinfo) report essid/mesh_id as null, and filtering nulls away used to
+    // leave an empty set that trivially satisfied "<= 1" — so the panel rendered a confident green
+    // "Healthy" precisely when it had no data to judge. Track that case separately.
     const onlineDevices = devices.filter(d => d.status === 'online');
-    const meshIds = [...new Set(onlineDevices.map(d => d.mesh_id).filter(id => id))];
-    const ssids = [...new Set(onlineDevices.map(d => d.essid).filter(id => id))];
+    const wirelessDevices = onlineDevices.filter(d => d.essid || d.mesh_id);
+    const meshIds = [...new Set(wirelessDevices.map(d => d.mesh_id).filter(id => id))];
+    const ssids = [...new Set(wirelessDevices.map(d => d.essid).filter(id => id))];
 
-    const isMeshConsistent = meshIds.length <= 1 && ssids.length <= 1;
+    const hasMeshData = wirelessDevices.length > 0;
+    // A single wireless node cannot be inconsistent with anything; only audit a real mesh.
+    const isMeshConsistent = !hasMeshData || wirelessDevices.length < 2 || (meshIds.length <= 1 && ssids.length <= 1);
     const dominantMeshId = meshIds[0] || 'Unknown';
     const dominantSsid = ssids[0] || 'Unknown';
 

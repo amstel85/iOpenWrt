@@ -1,14 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Activity, Clock, Cpu, HardDrive, Wifi, ArrowDownToLine, ArrowUpFromLine, Power, RefreshCw, Database, Users, Globe } from 'lucide-react';
+import { Clock, Cpu, Power, RefreshCw, Database, Users, Globe } from 'lucide-react';
 import api from '../api';
+import PackageManager from '../components/PackageManager';
 
 const DeviceDashboard = () => {
     const { id } = useParams();
     const [device, setDevice] = useState(null);
     const [stats, setStats] = useState(null);
+    const [rate, setRate] = useState({ rx: 0, tx: 0 });
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+
+    // Previous byte counters, to turn cumulative totals into a live rate.
+    const prevSample = useRef(null);
 
     const [rebooting, setRebooting] = useState(false);
 
@@ -30,40 +35,65 @@ const DeviceDashboard = () => {
     };
 
     useEffect(() => {
+        // Clear previous device's data so a failed fetch can't leave it on screen.
+        setDevice(null);
+        setStats(null);
+        setRate({ rx: 0, tx: 0 });
+        prevSample.current = null;
+        setLoading(true);
+
+        let cancelled = false;
+        let inFlight = false;
+
         const fetchDeviceData = async () => {
+            // Each poll opens a fresh SSH connection to the router. If one is slow, a 5s interval
+            // stacks connections and can deliver samples out of order, which corrupts the rate.
+            if (inFlight) return;
+            inFlight = true;
             try {
-                // Fetch basic device info
                 const devRes = await api.get(`/devices/${id}`);
+                if (cancelled) return;
                 setDevice(devRes.data);
 
-                // Fetch real-time stats
                 const statRes = await api.get(`/devices/${id}/stats`);
-                setStats(statRes.data);
+                if (cancelled) return;
+                const s = statRes.data;
+
+                // The API returns cumulative interface byte counters, not a speed. Derive the rate
+                // from the delta between polls; the first sample has nothing to compare against.
+                const now = Date.now();
+                const prev = prevSample.current;
+                if (prev && s.network) {
+                    const seconds = (now - prev.t) / 1000;
+                    const dRx = s.network.rx_bytes - prev.rx;
+                    const dTx = s.network.tx_bytes - prev.tx;
+                    if (seconds > 0 && dRx >= 0 && dTx >= 0) {
+                        setRate({ rx: (dRx * 8) / seconds / 1e6, tx: (dTx * 8) / seconds / 1e6 });
+                    }
+                }
+                if (s.network) prevSample.current = { t: now, rx: s.network.rx_bytes, tx: s.network.tx_bytes };
+
+                setStats(s);
                 setError(null);
             } catch (err) {
+                if (cancelled) return;
                 console.error("Failed to fetch device stats", err);
                 setError("Failed to connect to device. Is it online?");
+                // Don't keep showing a stale rate as if it were live.
+                setRate({ rx: 0, tx: 0 });
+                prevSample.current = null;
             } finally {
-                setLoading(false);
+                inFlight = false;
+                if (!cancelled) setLoading(false);
             }
         };
 
-        setLoading(true);
         fetchDeviceData();
         const interval = setInterval(fetchDeviceData, 5000); // Poll every 5 seconds for live stats
-        return () => clearInterval(interval);
+        return () => { cancelled = true; clearInterval(interval); };
     }, [id]);
 
     if (loading && !device) return <div className="p-8 text-center text-gray-500">Loading Device Data...</div>;
-
-    // Formatting Helpers
-    const formatBytes = (bytes) => {
-        if (bytes === 0) return '0 B';
-        const k = 1024;
-        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-    };
 
     const formatUptime = (seconds) => {
         if (!seconds) return '0s';
@@ -72,6 +102,19 @@ const DeviceDashboard = () => {
         const m = Math.floor(seconds % 3600 / 60);
         return `${d > 0 ? d + 'd ' : ''}${h > 0 ? h + 'h ' : ''}${m}m`;
     };
+
+    const formatBytes = (bytes) => {
+        if (!bytes) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    };
+
+    // Load average is not a percentage; scale 1-minute load to a bar without pretending it is one.
+    const load1m = stats?.load ? parseFloat(stats.load['1m']) || 0 : 0;
+    const memPercent = stats?.memory?.percent ?? 0;
+    const clientCount = stats?.wifi_clients ?? 0;
 
     return (
         <div className="space-y-6">
@@ -131,12 +174,14 @@ const DeviceDashboard = () => {
                             <div className="p-2.5 rounded-xl bg-orange-50 text-orange-600">
                                 <Cpu className="w-5 h-5 md:w-6 md:h-6" />
                             </div>
-                            <span className="text-xl md:text-2xl font-black text-gray-900 leading-none">{stats.cpu_usage}%</span>
+                            <span className="text-xl md:text-2xl font-black text-gray-900 leading-none">{load1m.toFixed(2)}</span>
                         </div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">CPU Performance</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Load Average (1m)</p>
                         <div className="mt-3 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-orange-500 rounded-full transition-all duration-1000" style={{ width: `${stats.cpu_usage}%` }}></div>
+                            {/* A load of 1.00 saturates one core; cap the bar there rather than implying a percentage. */}
+                            <div className="h-full bg-orange-500 rounded-full transition-all duration-1000" style={{ width: `${Math.min(load1m * 100, 100)}%` }}></div>
                         </div>
+                        <p className="text-[11px] text-gray-400 mt-2 font-medium">5m {stats.load?.['5m'] ?? '—'} · 15m {stats.load?.['15m'] ?? '—'}</p>
                     </div>
 
                     {/* Memory Usage */}
@@ -145,12 +190,15 @@ const DeviceDashboard = () => {
                             <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600">
                                 <Database className="w-5 h-5 md:w-6 md:h-6" />
                             </div>
-                            <span className="text-xl md:text-2xl font-black text-gray-900 leading-none">{stats.memory_usage}%</span>
+                            <span className="text-xl md:text-2xl font-black text-gray-900 leading-none">{memPercent}%</span>
                         </div>
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Memory Utilized</p>
                         <div className="mt-3 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
-                            <div className="h-full bg-blue-500 rounded-full transition-all duration-1000" style={{ width: `${stats.memory_usage}%` }}></div>
+                            <div className="h-full bg-blue-500 rounded-full transition-all duration-1000" style={{ width: `${memPercent}%` }}></div>
                         </div>
+                        <p className="text-[11px] text-gray-400 mt-2 font-medium">
+                            {Math.round((stats.memory?.used || 0) / 1024)} MB of {Math.round((stats.memory?.total || 0) / 1024)} MB
+                        </p>
                     </div>
 
                     {/* WiFi Clients */}
@@ -159,10 +207,12 @@ const DeviceDashboard = () => {
                             <div className="p-2.5 rounded-xl bg-purple-50 text-purple-600">
                                 <Users className="w-5 h-5 md:w-6 md:h-6" />
                             </div>
-                            <span className="text-xl md:text-2xl font-black text-gray-900 leading-none">{stats.clients}</span>
+                            <span className="text-xl md:text-2xl font-black text-gray-900 leading-none">{clientCount}</span>
                         </div>
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Active Clients</p>
-                        <p className="text-[11px] text-gray-400 mt-2 font-medium">Monitoring <span className="text-purple-600">{stats.clients_list?.length || 0}</span> local targets</p>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Wireless Clients</p>
+                        <p className="text-[11px] text-gray-400 mt-2 font-medium">
+                            {clientCount === 0 ? 'No wireless clients associated' : `Associated to this radio`}
+                        </p>
                     </div>
 
                     {/* Uptime */}
@@ -171,10 +221,12 @@ const DeviceDashboard = () => {
                             <div className="p-2.5 rounded-xl bg-emerald-50 text-emerald-600">
                                 <Clock className="w-5 h-5 md:w-6 md:h-6" />
                             </div>
-                            <span className="text-sm md:text-base font-black text-gray-900 truncate ml-2">{stats.uptime}</span>
+                            <span className="text-sm md:text-base font-black text-gray-900 truncate ml-2">{formatUptime(stats.uptime)}</span>
                         </div>
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">System Uptime</p>
-                        <p className="text-[11px] text-emerald-600 font-bold mt-2 uppercase tracking-tighter">Node is Healthy</p>
+                        <p className="text-[11px] text-gray-400 font-medium mt-2">
+                            Booted {stats.uptime ? new Date(Date.now() - stats.uptime * 1000).toLocaleDateString() : '—'}
+                        </p>
                     </div>
 
                     {/* Traffic Stats (Full Width on Large, Stacked on Small) */}
@@ -187,34 +239,33 @@ const DeviceDashboard = () => {
                             <span className="text-[10px] font-black text-gray-300 uppercase animate-pulse">Live Stream</span>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-8 md:gap-12">
-                            <div className="space-y-4">
-                                <div className="flex justify-between text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                                    <span>Download Speed</span>
-                                    <span className="text-emerald-500">RX Traffic</span>
+                            {[
+                                { label: 'Download', side: 'RX', color: 'emerald', rate: rate.rx, total: stats.network?.rx_bytes },
+                                { label: 'Upload', side: 'TX', color: 'blue', rate: rate.tx, total: stats.network?.tx_bytes },
+                            ].map(({ label, side, color, rate: r, total }) => (
+                                <div key={side} className="space-y-4">
+                                    <div className="flex justify-between text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                        <span>{label} Speed</span>
+                                        <span className={color === 'emerald' ? 'text-emerald-500' : 'text-blue-500'}>{side} Traffic</span>
+                                    </div>
+                                    <div className="flex items-baseline">
+                                        <span className="text-3xl md:text-4xl font-black text-gray-900 mr-2">{r.toFixed(2)}</span>
+                                        <span className="text-sm font-bold text-gray-400">Mbps</span>
+                                    </div>
+                                    {/* Bar is relative to a 100 Mbps reference; it is not a link-capacity percentage. */}
+                                    <div className="h-2 w-full bg-gray-50 rounded-full overflow-hidden">
+                                        <div
+                                            className={`h-full transition-all duration-1000 ${color === 'emerald' ? 'bg-emerald-500' : 'bg-blue-500'}`}
+                                            style={{ width: `${Math.min(r, 100)}%` }}
+                                        ></div>
+                                    </div>
+                                    <p className="text-[11px] text-gray-400 font-medium">{formatBytes(total || 0)} total since boot</p>
                                 </div>
-                                <div className="flex items-baseline">
-                                    <span className="text-3xl md:text-4xl font-black text-gray-900 mr-2">{stats.traffic_rx}</span>
-                                    <span className="text-sm font-bold text-gray-400">Mbps</span>
-                                </div>
-                                <div className="h-2 w-full bg-gray-50 rounded-full overflow-hidden">
-                                    <div className="h-full bg-emerald-500 animate-pulse" style={{ width: '65%' }}></div>
-                                </div>
-                            </div>
-                            <div className="space-y-4">
-                                <div className="flex justify-between text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                                    <span>Upload Speed</span>
-                                    <span className="text-blue-500">TX Traffic</span>
-                                </div>
-                                <div className="flex items-baseline">
-                                    <span className="text-3xl md:text-4xl font-black text-gray-900 mr-2">{stats.traffic_tx}</span>
-                                    <span className="text-sm font-bold text-gray-400">Mbps</span>
-                                </div>
-                                <div className="h-2 w-full bg-gray-50 rounded-full overflow-hidden">
-                                    <div className="h-full bg-blue-500" style={{ width: '25%' }}></div>
-                                </div>
-                            </div>
+                            ))}
                         </div>
                     </div>
+
+                    <PackageManager deviceId={id} deviceName={device?.name} />
                 </div>
             )}
         </div>
