@@ -97,6 +97,16 @@ function initDb() {
     }
 
     console.log("Database initialized at", dbPath);
+
+    // Encrypt any credentials still stored as plaintext (pre-encryption installs).
+    // Deliberately non-fatal: initDb() runs at require time, outside server.js's try/catch, so an
+    // uncaught throw here means the port never binds — a crash loop rather than a logged error.
+    // A partial migration is survivable: decrypt() passes legacy plaintext through untouched.
+    try {
+        require('../services/cryptoService').migratePlaintextCredentials(db);
+    } catch (e) {
+        console.error("[DB] Credential encryption migration failed; continuing with existing values:", e.message);
+    }
 }
 
 // Automatically init DB on module load

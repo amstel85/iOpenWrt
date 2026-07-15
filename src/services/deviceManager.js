@@ -4,6 +4,7 @@ const dns = require('dns').promises;
 const { exec } = require('child_process');
 const { getDeviceStats } = require('./deviceStats');
 const { getManufacturer } = require('./ouiService');
+const { buildAuth } = require('./cryptoService');
 
 /**
  * Get internal ARP table from the controller host
@@ -179,8 +180,7 @@ function startStatusMonitor(db) {
 async function rebootDevice(db, id) {
     const device = db.prepare('SELECT ip, username, auth_type, password, private_key, port FROM devices WHERE id = ?').get(id);
     if (!device) throw new Error("Device not found");
-    const auth = device.auth_type === 'password' ? { password: device.password } : { privateKey: device.private_key };
-    return await executeCommand(device.ip, device.username, auth, 'reboot', device.port || 22);
+    return await executeCommand(device.ip, device.username, buildAuth(device), 'reboot', device.port || 22);
 }
 
 module.exports = { checkDeviceStatus, startStatusMonitor, performGlobalSync, rebootDevice };

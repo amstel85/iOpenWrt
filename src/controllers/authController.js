@@ -1,8 +1,9 @@
-const db = require('../db');
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { getOrCreate } = require('../services/secretService');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-default-key-change-me';
+// Generated and persisted to data/ on first run; JWT_SECRET overrides it.
+// Never fall back to a literal here — this repo is public.
+const JWT_SECRET = getOrCreate('jwt_secret', 'JWT_SECRET');
 
 const authController = {
     // Setup route is no longer needed since we use ENV variables
@@ -41,7 +42,9 @@ const authController = {
             const decoded = jwt.verify(token, JWT_SECRET);
             request.user = decoded; // Attach user to request
         } catch (err) {
-            reply.status(401).send({ error: 'Unauthorized', message: err.message });
+            // Must return the reply: that is what short-circuits the route handler from an async
+            // hook. Without it, auth only holds because Fastify internally checks reply.sent.
+            return reply.status(401).send({ error: 'Unauthorized', message: err.message });
         }
     }
 };

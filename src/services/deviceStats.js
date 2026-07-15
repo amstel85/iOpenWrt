@@ -1,10 +1,11 @@
 const { executeCommand } = require('./sshService');
+const { buildAuth } = require('./cryptoService');
 
 /**
  * Fetch real-time metrics from a single OpenWrt device via SSH.
  */
 async function getDeviceStats(device) {
-    const auth = device.auth_type === 'password' ? { password: device.password } : { privateKey: device.private_key };
+    const auth = buildAuth(device);
 
     // We run a combined command to get all info at once for speed
     // 1. uptime (load average)
