@@ -80,16 +80,22 @@ function isBlocked(pkg) {
  * One batched read-only probe. Mirrors the ---SECTION--- convention used by deviceStats.js.
  * Every line is guarded so the script always exits 0 — a non-zero exit would make
  * executeCommand reject and fail the whole device.
+ *
+ * Markers are emitted with a LEADING newline (printf '\n---X---\n'), not a bare echo. Files on
+ * these devices are not guaranteed to end in a newline — /etc/opkg/distfeeds.conf famously does
+ * not — and `cat` of such a file leaves the cursor mid-line, so the next marker gets glued onto
+ * the end of the previous output ("...aarch64/telephony---INSTALLED---") and is never recognised
+ * as a marker. That silently swallowed the section after it.
  */
 const INFO_CMD = [
-    'echo "---RELEASE---"; cat /etc/openwrt_release 2>/dev/null',
-    'echo "---KERNEL---"; uname -r 2>/dev/null',
-    'echo "---MODEL---"; cat /tmp/sysinfo/model 2>/dev/null',
-    'echo "---PKGMGR---"; command -v opkg >/dev/null 2>&1 && echo opkg; command -v apk >/dev/null 2>&1 && echo apk',
-    'echo "---SPACE---"; df -k /overlay 2>/dev/null || df -k / 2>/dev/null',
-    'echo "---FEEDS---"; cat /etc/opkg/distfeeds.conf 2>/dev/null; cat /etc/apk/repositories 2>/dev/null',
-    'echo "---INSTALLED---"; (opkg list-installed 2>/dev/null || apk list --installed 2>/dev/null) | wc -l',
-    'echo "---DONE---"',
+    'printf "\\n---RELEASE---\\n"; cat /etc/openwrt_release 2>/dev/null',
+    'printf "\\n---KERNEL---\\n"; uname -r 2>/dev/null',
+    'printf "\\n---MODEL---\\n"; cat /tmp/sysinfo/model 2>/dev/null',
+    'printf "\\n---PKGMGR---\\n"; command -v opkg >/dev/null 2>&1 && echo opkg; command -v apk >/dev/null 2>&1 && echo apk',
+    'printf "\\n---SPACE---\\n"; df -k /overlay 2>/dev/null || df -k / 2>/dev/null',
+    'printf "\\n---FEEDS---\\n"; cat /etc/opkg/distfeeds.conf 2>/dev/null; cat /etc/apk/repositories 2>/dev/null',
+    'printf "\\n---INSTALLED---\\n"; (opkg list-installed 2>/dev/null || apk list --installed 2>/dev/null) | wc -l',
+    'printf "\\n---DONE---\\n"',
 ].join('\n');
 
 function parseSystemInfo(raw) {
@@ -270,17 +276,76 @@ async function getSystemInfo(device) {
 async function checkUpdates(device) {
     const info = await getSystemInfo(device);
     if (info.package_manager === 'none') {
-        return { ...info, upgradable: [], checked_at: new Date().toISOString() };
+        return { ...info, upgradable: [], index_errors: [], checked_at: new Date().toISOString() };
     }
 
+    // Capture `update`'s exit code rather than sending it to /dev/null: "nothing to upgrade" and
+    // "the index refresh failed" look identical downstream, and only one of them is good news.
+    // stderr is folded into stdout because opkg reports real problems on both.
     const cmd = info.package_manager === 'opkg'
-        ? 'opkg update >/dev/null 2>&1; echo "---UPGRADABLE---"; opkg list-upgradable 2>/dev/null; echo "---DONE---"'
-        : 'apk update >/dev/null 2>&1; echo "---UPGRADABLE---"; apk list --upgradable 2>/dev/null; echo "---DONE---"';
+        ? 'opkg update >/dev/null 2>&1; printf "\\n---UPDEXIT---\\n$?\\n"; printf "\\n---UPGRADABLE---\\n"; opkg list-upgradable 2>&1; printf "\\n---DONE---\\n"; true'
+        : 'apk update >/dev/null 2>&1; printf "\\n---UPDEXIT---\\n$?\\n"; printf "\\n---UPGRADABLE---\\n"; apk list --upgradable 2>&1; printf "\\n---DONE---\\n"; true';
 
     const raw = await executeCommand(device.ip, device.username, buildAuth(device), cmd, device.port || 22, TIMEOUT_UPDATE_MS);
     const body = (raw.match(/---UPGRADABLE---\n([\s\S]*?)(?=\n---DONE---|$)/) || [, ''])[1];
+    const updExit = parseInt((raw.match(/---UPDEXIT---\n(\d+)/) || [, '-1'])[1]);
 
-    return { ...info, upgradable: parseUpgradable(body, info.package_manager), checked_at: new Date().toISOString() };
+    const index_errors = parseIndexErrors(body);
+    if (updExit !== 0) {
+        index_errors.unshift({
+            kind: 'update_failed',
+            detail: `Refreshing the package index failed (exit ${updExit}). The router may have no internet access, or the feed URLs may be unreachable. The list below is stale or empty as a result.`,
+        });
+    }
+
+    return {
+        ...info,
+        upgradable: parseUpgradable(body, info.package_manager),
+        index_errors,
+        update_exit: updExit,
+        checked_at: new Date().toISOString(),
+    };
+}
+
+/**
+ * Turn opkg's "Collected errors:" noise into something a human can act on.
+ *
+ * This matters more than it looks. On a firmware/feed mismatch, `opkg list-upgradable` prints
+ * nothing but errors — every kmod in the feed depends on a kernel build that isn't installed —
+ * and exits 0. Since none of those lines parse as "name - old - new", a naive parser reports a
+ * confident "nothing to upgrade" while opkg is actually telling you its dependency graph is
+ * broken. That is the difference between "you're up to date" and "this feed cannot be used".
+ */
+function parseIndexErrors(raw) {
+    const errors = [];
+    const kernelDeps = new Set();
+    let archIncompatible = 0;
+
+    for (const line of raw.split('\n')) {
+        const kmod = line.match(/cannot find dependency kernel \(= ([^)]+)\) for (\S+)/);
+        if (kmod) {
+            kernelDeps.add(kmod[1]);
+            continue;
+        }
+        if (/incompatible with the architectures configured/.test(line)) {
+            archIncompatible++;
+        }
+    }
+
+    if (kernelDeps.size) {
+        const want = [...kernelDeps][0];
+        errors.push({
+            kind: 'kernel_mismatch',
+            detail: `The feed's kernel modules require kernel ${want}, which is not what this device is running. Every kmod in the feed is therefore unusable here, and opkg cannot resolve its dependency graph. This is the concrete proof of the firmware/feed mismatch above.`,
+        });
+    }
+    if (archIncompatible) {
+        errors.push({
+            kind: 'arch_incompatible',
+            detail: `${archIncompatible} package(s) in the feed were built for a different architecture than this device.`,
+        });
+    }
+    return errors;
 }
 
 /**
@@ -396,5 +461,5 @@ function parseAffectedPackages(raw) {
 
 module.exports = {
     getSystemInfo, checkUpdates, upgradePackages,
-    parseSystemInfo, analyzeFeedHealth, parseUpgradable, isBlocked, parseAffectedPackages, // exported for tests
+    parseSystemInfo, analyzeFeedHealth, parseUpgradable, isBlocked, parseAffectedPackages, parseIndexErrors, // exported for tests
 };

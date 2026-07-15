@@ -130,12 +130,14 @@ const PackageManager = ({ deviceId, deviceName }) => {
             </div>
 
             {/* System facts */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
                 {[
                     ['Firmware', info?.release || '—'],
                     ['Kernel', info?.kernel || '—'],
                     ['Model', info?.model || '—'],
+                    ['Feed', info?.feed_release || '—'],
                     ['Free space', info?.overlay_kb_free !== null ? `${mb(info?.overlay_kb_free)} / ${mb(info?.overlay_kb_total)}` : '—'],
+                    ['Installed', info?.installed_packages != null ? `${info.installed_packages} packages` : '—'],
                 ].map(([label, value]) => (
                     <div key={label}>
                         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{label}</p>
@@ -206,10 +208,39 @@ const PackageManager = ({ deviceId, deviceName }) => {
             {/* Upgradable list */}
             {updates && !unsupported && (
                 <div className="mt-6">
+                    {/* opkg reports dependency-graph failures on stdout and still exits 0. Surface
+                        them: without this, "nothing to upgrade" reads as "you're up to date" when
+                        it actually means "this feed cannot be used at all". */}
+                    {(updates.index_errors || []).length > 0 && (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+                            <div className="flex items-start">
+                                <XCircle className="w-5 h-5 text-red-500 mr-3 mt-0.5 flex-shrink-0" />
+                                <div>
+                                    <p className="text-sm font-bold text-red-900">The package index is not usable on this device</p>
+                                    <ul className="mt-2 space-y-1">
+                                        {updates.index_errors.map((e, i) => (
+                                            <li key={i} className="text-sm text-red-800">• {e.detail}</li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {upgradable.length === 0 ? (
-                        <p className="text-sm text-gray-500">
-                            The feed reports nothing to upgrade. ({info.installed_packages} packages installed.)
-                        </p>
+                        <div className="text-sm text-gray-500 space-y-2">
+                            <p className="font-medium text-gray-700">Nothing to upgrade.</p>
+                            {info.feed_release && info.feed_release !== 'snapshot' && (
+                                <p>
+                                    Your feeds point at <span className="font-mono text-gray-700">releases/{info.feed_release}</span>, which is a
+                                    frozen point release — the package versions in it never change. OpenWrt ships fixes as
+                                    <em> new</em> point releases (each with its own feed), so this feed will not offer anything
+                                    new no matter how long you wait. An empty list here is expected, not a sign that everything
+                                    is current.
+                                </p>
+                            )}
+                            <p>{info.installed_packages != null ? `${info.installed_packages} packages installed.` : ''}</p>
+                        </div>
                     ) : (
                         <>
                             <div className="flex items-center justify-between mb-3">
