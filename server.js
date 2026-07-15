@@ -43,6 +43,11 @@ fastify.register(async function (protectedRoutes) {
     protectedRoutes.post('/api/network/sync', deviceController.syncAll);
     protectedRoutes.post('/api/devices/:id/reboot', deviceController.reboot);
 
+    // Package management
+    protectedRoutes.get('/api/devices/:id/system', deviceController.getSystemInfo);
+    protectedRoutes.get('/api/devices/:id/updates', deviceController.checkUpdates);
+    protectedRoutes.post('/api/devices/:id/upgrade', deviceController.upgradePackages);
+
     // Client Registry
     protectedRoutes.post('/api/clients/register', clientController.register);
 });
@@ -63,10 +68,16 @@ const start = async () => {
         await fastify.listen({ port, host: '0.0.0.0' });
         console.log(`OpenWrt Controller running at http://localhost:${port}`);
 
-        // Start Background Ping Service
-        const db = require('./src/db');
-        const { startStatusMonitor } = require('./src/services/deviceManager');
-        startStatusMonitor(db);
+        // Start Background Ping Service.
+        // DISABLE_MONITOR=1 boots the API without it: no SSH to routers, no subnet sweep. Use this
+        // when running locally against real devices you don't want to touch.
+        if (process.env.DISABLE_MONITOR === '1') {
+            console.log('DISABLE_MONITOR=1 — background sync and subnet sweep are OFF.');
+        } else {
+            const db = require('./src/db');
+            const { startStatusMonitor } = require('./src/services/deviceManager');
+            startStatusMonitor(db);
+        }
 
     } catch (err) {
         fastify.log.error(err);
