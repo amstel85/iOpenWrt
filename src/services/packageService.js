@@ -93,7 +93,8 @@ const INFO_CMD = [
     'printf "\\n---MODEL---\\n"; cat /tmp/sysinfo/model 2>/dev/null',
     'printf "\\n---PKGMGR---\\n"; command -v opkg >/dev/null 2>&1 && echo opkg; command -v apk >/dev/null 2>&1 && echo apk',
     'printf "\\n---SPACE---\\n"; df -k /overlay 2>/dev/null || df -k / 2>/dev/null',
-    'printf "\\n---FEEDS---\\n"; cat /etc/opkg/distfeeds.conf 2>/dev/null; cat /etc/apk/repositories 2>/dev/null',
+    // opkg (<=24.10) keeps feeds in distfeeds.conf; apk (25.12+) keeps them in repositories.d/.
+    'printf "\\n---FEEDS---\\n"; cat /etc/opkg/distfeeds.conf 2>/dev/null; cat /etc/apk/repositories 2>/dev/null; cat /etc/apk/repositories.d/*.list 2>/dev/null',
     'printf "\\n---INSTALLED---\\n"; (opkg list-installed 2>/dev/null || apk list --installed 2>/dev/null) | wc -l',
     'printf "\\n---DONE---\\n"',
 ].join('\n');
@@ -233,10 +234,17 @@ function parseUpgradable(raw, manager) {
             if (!m) continue;
             [, name, current, next] = m;
         } else {
-            // apk: "pkgname-1.2.4-r0 x86_64 {origin} (license) [upgradable from: pkgname-1.2.3-r0]"
-            const m = t.match(/^(\S+?)-([0-9][^\s]*)\s.*\[upgradable from:\s*\S+?-([0-9][^\s\]]*)\]/);
-            if (!m) continue;
-            [, name, next, current] = m;
+            // apk (25.12+). The first token is "<name>-<version>", e.g.
+            //   luci-base-25.256.abc-r1 aarch64 {feeds/luci} (Apache-2.0) [upgradable from: luci-base-25.100.x-r0]
+            // Split name from version at the last "-<digit...>" run (versions start with a digit).
+            const head = t.split(/\s+/)[0];
+            const vm = head.match(/^(.+)-(\d[^\s]*)$/);
+            if (!vm) continue;
+            name = vm[1];
+            next = vm[2];
+            // The current version is only present if apk prints the "[upgradable from: ...]" note.
+            const from = t.match(/\[upgradable from:\s*\S+?-(\d[^\s\]]*)\]/);
+            current = from ? from[1] : '(installed)';
         }
         out.push({ name, current, available: next, blocked: isBlocked(name), reason: isBlocked(name) ? blockReason(name) : null });
     }
