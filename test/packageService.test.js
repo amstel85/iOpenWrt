@@ -85,5 +85,32 @@ section('the kernel-mismatch error opkg prints on a bad feed is surfaced, not sw
     ok(errs.some((e) => e.kind === 'arch_incompatible'), 'arch incompatibility identified');
 }
 
-console.log(failed ? `\n${failed} test(s) FAILED` : '\nAll packageService tests passed');
+// ---- fleetService (pure aggregation) ----
+const { analyzeFleet, parseFleetProbe } = require('../src/services/fleetService');
+
+section('fleet: parse one probe');
+{
+    const raw = "---REL---\nDISTRIB_RELEASE='25.12.5'\n---KERNEL---\n6.12.94\n" +
+        "---RADIO---\nradio0 2g ch11\nradio1 5g ch149\n---IFACE---\nc5 enc=sae-mixed md=cafe\n---CLIENTS---\n3\n---DONE---";
+    const p = parseFleetProbe(raw, { id: 1, name: 'cudy 3', ip: '10.0.0.72' });
+    ok(p.release === '25.12.5' && p.radios.length === 2 && p.mobility_domains[0] === 'cafe' && p.client_count === 3, 'probe parsed');
+}
+
+section('fleet: aggregation flags drift, roaming, channels');
+{
+    const mk = (name, rel, ch, md) => ({ id: 1, name, ip: 'x', release: rel, kernel: '6.12.94',
+        radios: [{ band: '2g', channel: ch }], ssids: [{ ssid: 'c5', encryption: 'sae-mixed', mobility_domain: md }],
+        mobility_domains: [md], client_count: 1, reachable: true });
+
+    let f = analyzeFleet([mk('c1', '25.12.5', '1', 'cafe'), mk('c2', '25.12.5', '6', 'cafe'), mk('c3', '25.12.5', '11', 'cafe')]);
+    ok(f.summary.healthy && f.summary.firmware_consistent && f.summary.roaming_consistent, 'uniform fleet is healthy');
+    ok(f.summary.clients === 3, 'clients summed');
+
+    ok(analyzeFleet([mk('c1', '25.12.5', '1', 'cafe'), mk('c2', '24.10.0', '6', 'cafe')]).issues.some((i) => i.kind === 'firmware_drift'), 'firmware drift flagged');
+    ok(analyzeFleet([mk('c1', '25.12.5', '1', 'cafe'), mk('c2', '25.12.5', '6', 'home')]).issues.some((i) => i.kind === 'roaming_mismatch'), 'roaming mismatch flagged');
+    ok(analyzeFleet([mk('c1', '25.12.5', '6', 'cafe'), mk('c2', '25.12.5', '6', 'cafe')]).issues.some((i) => i.kind === 'channel_conflict'), '2.4GHz channel conflict flagged');
+    ok(analyzeFleet([mk('c1', '25.12.5', '1', 'cafe'), { name: 'c2', ip: 'x', reachable: false }]).issues.some((i) => i.kind === 'unreachable'), 'unreachable flagged');
+}
+
+console.log(failed ? `\n${failed} test(s) FAILED` : '\nAll tests passed');
 process.exit(failed ? 1 : 0);

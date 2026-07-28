@@ -108,6 +108,12 @@ async function performGlobalSync(db) {
             }
         } catch (error) {
             console.error(`[SYNC] Failed for ${device.name}: ${error.message}`);
+            // Alert only on the online -> offline transition, not every 30s while it stays down.
+            const prev = db.prepare('SELECT status FROM devices WHERE id = ?').get(device.id);
+            if (prev?.status === 'online') {
+                const { sendTelegramAlert } = require('./telegramService');
+                sendTelegramAlert(`🔴 *Router Offline*\n${device.name} (${device.ip}) stopped responding.\n\`${error.message}\``);
+            }
             db.prepare("UPDATE devices SET status = 'offline', last_error = ? WHERE id = ?").run(error.message, device.id);
         }
     });
@@ -118,6 +124,12 @@ async function performGlobalSync(db) {
         const prevDevice = db.prepare('SELECT clients_json, status FROM devices WHERE id = ?').get(deviceId);
         const prevClients = prevDevice?.clients_json ? JSON.parse(prevDevice.clients_json) : [];
         const prevMacs = new Set(prevClients.map(c => c.mac));
+
+        // Recovered: offline -> online transition (mirror of the offline alert above).
+        if (prevDevice?.status === 'offline') {
+            const { sendTelegramAlert } = require('./telegramService');
+            sendTelegramAlert(`🟢 *Router Back Online*\n${deviceName} is responding again.`);
+        }
 
         const enrichedClients = await Promise.all(stats.wifi_macs.map(async wifiClient => {
             const globalInfo = globalLeaseMap.get(wifiClient.mac) || { ip: '?.?.?.?', name: 'Unknown' };

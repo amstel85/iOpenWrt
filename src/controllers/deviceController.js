@@ -157,6 +157,17 @@ const deviceController = {
         }
     },
 
+    // Fleet intelligence: all AP units viewed together (firmware drift, roaming, channels).
+    // On-demand SSH to each — a deliberate user action, so the one-call-per-device probe is fine.
+    getFleet: async (request, reply) => {
+        const devices = db.prepare('SELECT id, name, ip, username, auth_type, password, private_key, port FROM devices WHERE is_gateway = 0').all();
+        try {
+            return await require('../services/fleetService').getFleetOverview(devices);
+        } catch (error) {
+            return reply.status(502).send({ error: "Failed to build fleet overview", message: error.message });
+        }
+    },
+
     // Upgrades ONLY the explicitly named packages. See packageService for why this is so guarded.
     upgradePackages: async (request, reply) => {
         const device = getDeviceForSsh(request.params.id);

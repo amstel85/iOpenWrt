@@ -6,6 +6,7 @@ import Devices from './pages/Devices';
 import DeviceDashboard from './pages/DeviceDashboard';
 
 import Dashboard from './pages/Dashboard';
+import Fleet from './pages/Fleet';
 import Settings from './pages/Settings';
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
                     <Route path="/login" element={<Login />} />
                     <Route path="/" element={<Layout />}>
                         <Route index element={<Dashboard />} />
+                        <Route path="fleet" element={<Fleet />} />
                         <Route path="devices" element={<Devices />} />
                         <Route path="devices/:id" element={<DeviceDashboard />} />
                         <Route path="settings" element={<Settings />} />

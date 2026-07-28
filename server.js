@@ -43,6 +43,9 @@ fastify.register(async function (protectedRoutes) {
     protectedRoutes.post('/api/network/sync', deviceController.syncAll);
     protectedRoutes.post('/api/devices/:id/reboot', deviceController.reboot);
 
+    // Fleet intelligence
+    protectedRoutes.get('/api/fleet', deviceController.getFleet);
+
     // Package management
     protectedRoutes.get('/api/devices/:id/system', deviceController.getSystemInfo);
     protectedRoutes.get('/api/devices/:id/updates', deviceController.checkUpdates);
