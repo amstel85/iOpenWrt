@@ -50,10 +50,10 @@ This project ships as a single Docker image and runs on any system with Docker (
 macOS) or on UNRAID. The published image is `amstel/iopenwrt`.
 
 > [!CAUTION]
-> **Set your own login before exposing this anywhere.** The image ships with `admin` /
-> `admin_password` baked in from `.env.example`, which means it works out of the box but anyone who
-> can reach it can log in. Always override `frontend_user` and `frontend_password` with your own
-> values (both names are lowercase).
+> **Set your own login before exposing this anywhere.** If you do not set `frontend_user` and
+> `frontend_password`, a random admin password is generated on the first run and printed to the logs
+> (`docker logs <container>`). That is fine for a quick local try, but for anything reachable by
+> others set your own `frontend_user` and `frontend_password` (both names are lowercase).
 
 ### Docker Compose
 
@@ -80,8 +80,8 @@ in the SQLite database.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `frontend_user` | *(none)* | Web UI username. Required. Both names are lowercase. |
-| `frontend_password` | *(none)* | Web UI password. Required. |
+| `frontend_user` | `admin` | Web UI username. Both names are lowercase. |
+| `frontend_password` | *auto-generated* | Web UI password. If unset, a random one is generated on first run and printed to the logs. Set your own before exposing the app. |
 | `PORT` | `8780` | Port the server listens on. |
 | `SUBNET` | *auto* | First three octets of the LAN to sweep, e.g. `192.168.1`. Auto-detected from the gateway device if unset. |
 | `JWT_SECRET` | *auto-generated* | Optional. A random secret is generated on first run and saved to `data/.secrets.json` if unset. |

@@ -2,8 +2,22 @@ const jwt = require('jsonwebtoken');
 const { getOrCreate } = require('../services/secretService');
 
 // Generated and persisted to data/ on first run; JWT_SECRET overrides it.
-// Never fall back to a literal here — this repo is public.
+// Never fall back to a literal here - this repo is public.
 const JWT_SECRET = getOrCreate('jwt_secret', 'JWT_SECRET');
+
+// Web UI login. frontend_user/frontend_password win when set; otherwise a random admin password is
+// generated on first run, persisted, and printed to the log below. That keeps the app usable out of
+// the box without shipping a known default that anyone could log in with.
+const ADMIN_USER = process.env.frontend_user || 'admin';
+const ADMIN_PASS = getOrCreate('admin_password', 'frontend_password', 12);
+if (!process.env.frontend_password) {
+    console.log('------------------------------------------------------------');
+    console.log('  Web UI login (no frontend_password set - generated one):');
+    console.log(`    username: ${ADMIN_USER}`);
+    console.log(`    password: ${ADMIN_PASS}`);
+    console.log('  Set frontend_user / frontend_password to use your own.');
+    console.log('------------------------------------------------------------');
+}
 
 const authController = {
     // Setup route is no longer needed since we use ENV variables
@@ -14,19 +28,12 @@ const authController = {
     login: async (request, reply) => {
         const { username, password } = request.body;
 
-        const envUser = process.env.frontend_user;
-        const envPass = process.env.frontend_password;
-
-        if (!envUser || !envPass) {
-            return reply.status(500).send({ error: "Backend missing frontend_user or frontend_password in .env" });
-        }
-
-        if (username !== envUser || password !== envPass) {
+        if (username !== ADMIN_USER || password !== ADMIN_PASS) {
             return reply.status(401).send({ error: 'Invalid credentials' });
         }
 
         // Generate JWT
-        const token = jwt.sign({ id: 1, username: envUser }, JWT_SECRET, { expiresIn: '12h' });
+        const token = jwt.sign({ id: 1, username: ADMIN_USER }, JWT_SECRET, { expiresIn: '12h' });
         return { token };
     },
 

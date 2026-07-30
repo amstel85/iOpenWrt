@@ -61,12 +61,12 @@ function persist(secrets) {
  * @param {string} [envVar] - env var that overrides the stored value
  * @returns {string} hex secret
  */
-function getOrCreate(name, envVar) {
+function getOrCreate(name, envVar, bytes = 32) {
     if (envVar && process.env[envVar]) return process.env[envVar];
 
     const secrets = load();
     if (!secrets[name]) {
-        secrets[name] = crypto.randomBytes(32).toString('hex');
+        secrets[name] = crypto.randomBytes(bytes).toString('hex');
         persist(secrets);
         console.log(`[SECRETS] Generated a new ${name} and stored it in ${secretPath}`);
     }
