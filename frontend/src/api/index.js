@@ -22,4 +22,19 @@ api.interceptors.request.use((config) => {
     return Promise.reject(error);
 });
 
+// Response interceptor: an expired or invalid token comes back as 401. Instead of leaving the
+// page broken showing a raw "jwt expired", drop the stale token and bounce to the login screen.
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response?.status === 401) {
+            localStorage.removeItem('iopenwrt_token');
+            if (window.location.pathname !== '/login') {
+                window.location.assign('/login');
+            }
+        }
+        return Promise.reject(error);
+    }
+);
+
 export default api;

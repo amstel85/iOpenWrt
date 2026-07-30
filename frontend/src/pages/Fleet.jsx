@@ -105,8 +105,11 @@ const Fleet = () => {
                         {data.units.map((u) => (
                             <div key={u.id ?? u.name} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                                 <div className="flex items-center justify-between mb-3">
-                                    <span className="font-bold text-gray-900">{u.name}</span>
-                                    <span className="text-xs font-mono text-gray-400">{u.ip}</span>
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span className="font-bold text-gray-900 truncate">{u.name}</span>
+                                        {u.is_gateway && <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 border border-blue-100 px-1.5 py-0.5 rounded">Gateway</span>}
+                                    </div>
+                                    <span className="text-xs font-mono text-gray-400 shrink-0 ml-2">{u.ip}</span>
                                 </div>
                                 <dl className="space-y-1.5 text-sm">
                                     <Row k="Firmware" v={u.release || '—'} mono />

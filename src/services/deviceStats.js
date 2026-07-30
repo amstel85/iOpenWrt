@@ -20,6 +20,8 @@ async function getDeviceStats(device) {
         cat /proc/loadavg
         echo "---MEM---"
         cat /proc/meminfo
+        echo "---TEMP---"
+        cat /sys/class/thermal/thermal_zone*/temp 2>/dev/null
         echo "---NET---"
         ifconfig br-lan 2>/dev/null || ifconfig eth0 2>/dev/null
         echo "---LEASES---"
@@ -51,6 +53,7 @@ function parseStats(raw) {
         load: { '1m': 0, '5m': 0, '15m': 0 },
         memory: { total: 0, free: 0, used: 0, percent: 0 },
         network: { rx_bytes: 0, tx_bytes: 0 },
+        temperature: null,
         wifi_clients: 0,
         clients: []
     };
@@ -88,6 +91,17 @@ function parseStats(raw) {
                 used: used,
                 percent: memTotal > 0 ? Math.round((used / memTotal) * 100) : 0
             };
+        }
+        else if (section === 'TEMP') {
+            // Linux thermal zones report millidegrees C. Devices can expose several zones
+            // (SoC, wifi, etc.); take the hottest as the device temperature. Sane range only,
+            // so a bogus 0 / huge reading can't masquerade as a real temp.
+            const temps = content.split('\n')
+                .map(l => parseInt(l.trim(), 10))
+                .filter(n => Number.isFinite(n) && n >= 5000 && n <= 130000);
+            if (temps.length) {
+                stats.temperature = Math.round(Math.max(...temps) / 100) / 10; // °C, 1 decimal
+            }
         }
         else if (section === 'NET') {
             const rxMatch = content.match(/RX bytes:(\d+)/);

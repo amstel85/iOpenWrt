@@ -50,6 +50,8 @@ function parseFleetProbe(raw, device) {
         id: device.id,
         name: device.name,
         ip: device.ip,
+        is_gateway: !!device.is_gateway,
+        role: device.is_gateway ? 'gateway' : 'ap',
         release: grab('DISTRIB_RELEASE'),
         revision: grab('DISTRIB_REVISION'),
         kernel: section(raw, 'KERNEL') || null,
@@ -68,10 +70,14 @@ function parseFleetProbe(raw, device) {
  */
 function analyzeFleet(units) {
     const live = units.filter((u) => u.reachable);
+    // Consistency checks (firmware/roaming/channels/SSID) only make sense across the APs. The
+    // gateway is a different device class (often different hardware) and has no WiFi — it still
+    // appears in the fleet list, but must not skew these comparisons or false-flag a mismatch.
+    const aps = live.filter((u) => !u.is_gateway);
     const issues = [];
 
     // --- firmware drift ---
-    const releases = [...new Set(live.map((u) => u.release).filter(Boolean))];
+    const releases = [...new Set(aps.map((u) => u.release).filter(Boolean))];
     const firmwareConsistent = releases.length <= 1;
     if (releases.length > 1) {
         issues.push({
@@ -82,8 +88,8 @@ function analyzeFleet(units) {
     }
 
     // --- roaming consistency (802.11r) ---
-    const allMd = [...new Set(live.flatMap((u) => u.mobility_domains))];
-    const roamingUnits = live.filter((u) => u.mobility_domains.length > 0);
+    const allMd = [...new Set(aps.flatMap((u) => u.mobility_domains))];
+    const roamingUnits = aps.filter((u) => u.mobility_domains.length > 0);
     const roamingConsistent = allMd.length <= 1;
     if (allMd.length > 1) {
         issues.push({
@@ -95,7 +101,7 @@ function analyzeFleet(units) {
 
     // --- SSID/encryption consistency for shared SSIDs ---
     const ssidEnc = {};
-    for (const u of live) {
+    for (const u of aps) {
         for (const s of u.ssids) {
             (ssidEnc[s.ssid] = ssidEnc[s.ssid] || new Set()).add(s.encryption);
         }
@@ -111,7 +117,7 @@ function analyzeFleet(units) {
     }
 
     // --- 2.4 GHz channel conflicts (only 1/6/11 are non-overlapping) ---
-    const band24 = live.flatMap((u) => u.radios.filter((r) => r.band === '2g').map((r) => ({ unit: u.name, ch: r.channel })));
+    const band24 = aps.flatMap((u) => u.radios.filter((r) => r.band === '2g').map((r) => ({ unit: u.name, ch: r.channel })));
     const chCount = {};
     band24.forEach((r) => { chCount[r.ch] = (chCount[r.ch] || 0) + 1; });
     const conflicts = Object.entries(chCount).filter(([, n]) => n > 1);
@@ -155,7 +161,7 @@ async function probeOne(device) {
         const raw = await executeCommand(device.ip, device.username, buildAuth(device), FLEET_CMD, device.port || 22, 20000);
         return parseFleetProbe(raw, device);
     } catch (e) {
-        return { id: device.id, name: device.name, ip: device.ip, reachable: false, error: e.message };
+        return { id: device.id, name: device.name, ip: device.ip, is_gateway: !!device.is_gateway, role: device.is_gateway ? 'gateway' : 'ap', reachable: false, error: e.message };
     }
 }
 

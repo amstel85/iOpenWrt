@@ -12,7 +12,9 @@ function getDeviceForSsh(id) {
 const deviceController = {
     getAll: async (request, reply) => {
         // Return devices (omit sensitive fields like keys/passwords for safety)
-        const devices = db.prepare('SELECT id, name, ip, username, auth_type, status, client_count, clients_json, last_seen, created_at, is_gateway, essid, mesh_id, wifi_mode, port, last_error FROM devices').all();
+        // Gateway first, then by insertion order — the DHCP/gateway node is the logical root of
+        // the list, not whatever happened to be added first.
+        const devices = db.prepare('SELECT id, name, ip, username, auth_type, status, client_count, clients_json, last_seen, created_at, is_gateway, essid, mesh_id, wifi_mode, port, last_error FROM devices ORDER BY is_gateway DESC, id ASC').all();
         return devices;
     },
 
@@ -160,7 +162,9 @@ const deviceController = {
     // Fleet intelligence: all AP units viewed together (firmware drift, roaming, channels).
     // On-demand SSH to each — a deliberate user action, so the one-call-per-device probe is fine.
     getFleet: async (request, reply) => {
-        const devices = db.prepare('SELECT id, name, ip, username, auth_type, password, private_key, port FROM devices WHERE is_gateway = 0').all();
+        // Include the gateway too (it should appear in the fleet), but fleetService keeps the
+        // AP-only consistency checks (roaming/channels/firmware) from being skewed by it.
+        const devices = db.prepare('SELECT id, name, ip, username, auth_type, password, private_key, port, is_gateway FROM devices ORDER BY is_gateway DESC, id ASC').all();
         try {
             return await require('../services/fleetService').getFleetOverview(devices);
         } catch (error) {

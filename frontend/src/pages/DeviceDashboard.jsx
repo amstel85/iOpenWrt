@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Clock, Cpu, Power, RefreshCw, Database, Users, Globe } from 'lucide-react';
+import { Clock, Cpu, Power, RefreshCw, Database, Users, Globe, Thermometer } from 'lucide-react';
 import api from '../api';
 import PackageManager from '../components/PackageManager';
 
@@ -115,6 +115,8 @@ const DeviceDashboard = () => {
     const load1m = stats?.load ? parseFloat(stats.load['1m']) || 0 : 0;
     const memPercent = stats?.memory?.percent ?? 0;
     const clientCount = stats?.wifi_clients ?? 0;
+    // Not every device exposes a thermal sensor; null means "no data", so hide the card entirely.
+    const temp = stats?.temperature ?? null;
 
     return (
         <div className="space-y-6">
@@ -228,6 +230,26 @@ const DeviceDashboard = () => {
                             Booted {stats.uptime ? new Date(Date.now() - stats.uptime * 1000).toLocaleDateString() : '—'}
                         </p>
                     </div>
+
+                    {/* Temperature (only when the device exposes a thermal sensor) */}
+                    {temp != null && (
+                        <div className="bg-white rounded-2xl shadow-sm p-5 md:p-6 border border-gray-100">
+                            <div className="flex justify-between items-start mb-4">
+                                <div className={`p-2.5 rounded-xl ${temp >= 75 ? 'bg-red-50 text-red-600' : temp >= 60 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                                    <Thermometer className="w-5 h-5 md:w-6 md:h-6" />
+                                </div>
+                                <span className="text-xl md:text-2xl font-black text-gray-900 leading-none">{temp.toFixed(1)}°C</span>
+                            </div>
+                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">CPU Temperature</p>
+                            <div className="mt-3 h-1.5 w-full bg-gray-100 rounded-full overflow-hidden">
+                                {/* Bar scaled to a 90°C reference; SoCs typically throttle around 80–85°C. */}
+                                <div className={`h-full rounded-full transition-all duration-1000 ${temp >= 75 ? 'bg-red-500' : temp >= 60 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(temp / 90 * 100, 100)}%` }}></div>
+                            </div>
+                            <p className="text-[11px] text-gray-400 mt-2 font-medium">
+                                {temp >= 75 ? 'Hot — check cooling' : temp >= 60 ? 'Warm' : 'Normal range'}
+                            </p>
+                        </div>
+                    )}
 
                     {/* Traffic Stats (Full Width on Large, Stacked on Small) */}
                     <div className="col-span-1 sm:col-span-2 lg:col-span-4 bg-white rounded-2xl shadow-sm p-5 md:p-8 border border-gray-100 mt-4">
