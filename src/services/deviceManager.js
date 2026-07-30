@@ -30,9 +30,20 @@ async function getLocalArp() {
 /**
  * Perform a background sweep of the subnet
  */
-async function sweepSubnet() {
-    console.log(`[DISCOVERY] Starting active subnet sweep...`);
-    const base = '10.0.0';
+async function sweepSubnet(db) {
+    // Which /24 to sweep for host discovery. Prefer an explicit SUBNET (e.g. "192.168.1"),
+    // otherwise derive it from the gateway device's IP so it works on any LAN with no config,
+    // and only fall back to 10.0.0 if neither is available.
+    let base = process.env.SUBNET;
+    if (!base && db) {
+        try {
+            const row = db.prepare("SELECT ip FROM devices WHERE is_gateway = 1 ORDER BY id LIMIT 1").get()
+                || db.prepare("SELECT ip FROM devices ORDER BY id LIMIT 1").get();
+            if (row && row.ip && row.ip.includes('.')) base = row.ip.split('.').slice(0, 3).join('.');
+        } catch (e) { /* fall through to the default */ }
+    }
+    base = base || '10.0.0';
+    console.log(`[DISCOVERY] Starting active subnet sweep on ${base}.0/24...`);
     const pings = [];
     for (let i = 1; i <= 254; i++) {
         pings.push(new Promise((resolve) => {
@@ -184,9 +195,9 @@ async function checkDeviceStatus(db, device) {
 
 function startStatusMonitor(db) {
     performGlobalSync(db);
-    sweepSubnet();
+    sweepSubnet(db);
     setInterval(() => performGlobalSync(db), 30000);
-    setInterval(() => sweepSubnet(), 300000);
+    setInterval(() => sweepSubnet(db), 300000);
 }
 
 async function rebootDevice(db, id) {
