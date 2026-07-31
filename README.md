@@ -2,6 +2,8 @@
 
 A web-based controller and monitor for OpenWrt routers. Manage and monitor your network devices over SSH from a single dashboard, with no agent to install on the routers.
 
+![iOpenWRT dashboard](docs/dashboard.png)
+
 ## Features
 
 - Monitor multiple OpenWrt routers over SSH from one dashboard: load, memory, uptime, CPU
