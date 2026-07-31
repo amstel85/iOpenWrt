@@ -4,6 +4,11 @@ A web-based controller and monitor for OpenWrt routers. Manage and monitor your 
 
 ![iOpenWRT dashboard](docs/dashboard.png)
 
+<p align="center">
+  <img src="docs/device1.png" width="49%" alt="Device page - live stats and temperature" />
+  <img src="docs/device2.png" width="49%" alt="Device page - package management" />
+</p>
+
 ## Features
 
 - Monitor multiple OpenWrt routers over SSH from one dashboard: load, memory, uptime, CPU
