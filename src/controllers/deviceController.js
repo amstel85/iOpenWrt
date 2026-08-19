@@ -123,6 +123,28 @@ const deviceController = {
         return { success: true };
     },
 
+    // Guest WiFi toggle. Reads/flips the pre-built guest SSID across the AP units on demand — a
+    // deliberate user action, so the one-SSH-call-per-AP probe is fine (same as getFleet).
+    getGuest: async (request, reply) => {
+        const { getGuestStatus } = require('../services/deviceManager');
+        try {
+            return await getGuestStatus(db);
+        } catch (error) {
+            return reply.status(502).send({ error: "Failed to read guest network status", message: error.message });
+        }
+    },
+
+    setGuest: async (request, reply) => {
+        const { setGuestNetwork } = require('../services/deviceManager');
+        const enabled = request.body?.enabled === true;
+        try {
+            const results = await setGuestNetwork(db, enabled);
+            return { success: true, enabled, results };
+        } catch (error) {
+            return reply.status(502).send({ error: "Failed to toggle guest network", message: error.message });
+        }
+    },
+
     reboot: async (request, reply) => {
         const { id } = request.params;
         const { rebootDevice } = require('../services/deviceManager');

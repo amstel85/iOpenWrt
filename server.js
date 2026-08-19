@@ -41,6 +41,8 @@ fastify.register(async function (protectedRoutes) {
     protectedRoutes.put('/api/devices/:id', deviceController.update);
     protectedRoutes.delete('/api/devices/:id', deviceController.remove);
     protectedRoutes.post('/api/network/sync', deviceController.syncAll);
+    protectedRoutes.get('/api/network/guest', deviceController.getGuest);
+    protectedRoutes.post('/api/network/guest', deviceController.setGuest);
     protectedRoutes.post('/api/devices/:id/reboot', deviceController.reboot);
 
     // Fleet intelligence

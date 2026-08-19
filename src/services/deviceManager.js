@@ -206,4 +206,50 @@ async function rebootDevice(db, id) {
     return await executeCommand(device.ip, device.username, buildAuth(device), 'reboot', device.port || 22);
 }
 
-module.exports = { checkDeviceStatus, startStatusMonitor, performGlobalSync, rebootDevice };
+// The guest SSID lives on the AP units (is_gateway = 0), not the gateway. We only ever flip the
+// `disabled` flag on the pre-built guest wifi-ifaces and `wifi reload` — never create or reshape
+// the network — so this cannot touch the isolated-subnet/firewall config the guest network relies
+// on. An AP without a guest iface is skipped (NO_GUEST), not treated as an error.
+function apDevices(db) {
+    return db.prepare('SELECT id, name, ip, username, auth_type, password, private_key, port FROM devices WHERE is_gateway = 0').all();
+}
+
+async function setGuestNetwork(db, enabled) {
+    const disabled = enabled ? '0' : '1';
+    const cmd = `if uci -q get wireless.guest2g.ssid >/dev/null 2>&1; then ` +
+        `uci set wireless.guest2g.disabled='${disabled}'; ` +
+        `uci -q get wireless.guest5g.ssid >/dev/null 2>&1 && uci set wireless.guest5g.disabled='${disabled}'; ` +
+        `uci commit wireless; wifi reload; echo OK; else echo NO_GUEST; fi`;
+    const devices = apDevices(db);
+    const settled = await Promise.allSettled(devices.map(d =>
+        executeCommand(d.ip, d.username, buildAuth(d), cmd, d.port || 22, 30000)
+    ));
+    return settled.map((r, i) => {
+        const d = devices[i];
+        if (r.status === 'fulfilled') {
+            return { id: d.id, name: d.name, ok: r.value.includes('OK'), skipped: r.value.includes('NO_GUEST') };
+        }
+        return { id: d.id, name: d.name, ok: false, error: r.reason.message };
+    });
+}
+
+async function getGuestStatus(db) {
+    const cmd = `if uci -q get wireless.guest2g.ssid >/dev/null 2>&1; then echo "on:$(uci -q get wireless.guest2g.disabled 2>/dev/null || echo 0)"; else echo missing; fi`;
+    const devices = apDevices(db);
+    const settled = await Promise.allSettled(devices.map(d =>
+        executeCommand(d.ip, d.username, buildAuth(d), cmd, d.port || 22, 15000)
+    ));
+    const perDevice = settled.map((r, i) => {
+        const d = devices[i];
+        if (r.status === 'fulfilled') {
+            const t = r.value.trim();
+            return { id: d.id, name: d.name, hasGuest: t.startsWith('on:'), enabled: t === 'on:0' };
+        }
+        return { id: d.id, name: d.name, hasGuest: false, enabled: false, error: r.reason.message };
+    });
+    const withGuest = perDevice.filter(d => d.hasGuest);
+    // The switch shows one state for the whole fleet: "on" only when every guest-capable AP agrees.
+    return { enabled: withGuest.length > 0 && withGuest.every(d => d.enabled), configured: withGuest.length > 0, devices: perDevice };
+}
+
+module.exports = { checkDeviceStatus, startStatusMonitor, performGlobalSync, rebootDevice, setGuestNetwork, getGuestStatus };

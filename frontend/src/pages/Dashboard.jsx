@@ -10,6 +10,9 @@ const Dashboard = () => {
     const [selectedClients, setSelectedClients] = useState(null); // For modal
     const [renamingMac, setRenamingMac] = useState(null);
     const [newName, setNewName] = useState('');
+    const [guestEnabled, setGuestEnabled] = useState(null);
+    const [guestConfigured, setGuestConfigured] = useState(false);
+    const [guestBusy, setGuestBusy] = useState(false);
 
     const fetchDevices = async (showLoading = true) => {
         if (showLoading) setLoading(true);
@@ -62,8 +65,33 @@ const Dashboard = () => {
         }
     };
 
+    const fetchGuest = async () => {
+        try {
+            const res = await api.get('/network/guest');
+            setGuestConfigured(res.data.configured);
+            setGuestEnabled(res.data.enabled);
+        } catch (err) {
+            console.error("Failed to read guest network status", err);
+        }
+    };
+
+    const toggleGuest = async () => {
+        const next = !guestEnabled;
+        setGuestBusy(true);
+        try {
+            await api.post('/network/guest', { enabled: next });
+            setGuestEnabled(next);
+        } catch (err) {
+            console.error("Failed to toggle guest network", err);
+            alert("Failed to toggle Guest WiFi");
+        } finally {
+            setGuestBusy(false);
+        }
+    };
+
     useEffect(() => {
         fetchDevices();
+        fetchGuest();
         const interval = setInterval(() => fetchDevices(false), 10000); // Poll every 10 seconds
         return () => clearInterval(interval);
     }, []);
@@ -145,15 +173,30 @@ const Dashboard = () => {
                     <h1 className="text-2xl md:text-3xl font-bold text-gray-900 tracking-tight">Main Dashboard</h1>
                     <p className="text-gray-500 text-sm mt-1">Live overview of your managed OpenWrt network</p>
                 </div>
-                <button
-                    onClick={handleSync}
-                    disabled={syncing}
-                    className={`flex items-center justify-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all w-full md:w-auto ${syncing ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white border hover:bg-gray-50 text-gray-700 shadow-sm'
-                        }`}
-                >
-                    <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-                    <span>{syncing ? 'Syncing...' : 'Sync Now'}</span>
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                    {guestConfigured && (
+                        <button
+                            onClick={toggleGuest}
+                            disabled={guestBusy}
+                            title="Enable or disable the Guest WiFi on all access points"
+                            className={`flex items-center justify-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all w-full md:w-auto border shadow-sm ${guestEnabled
+                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                                : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'} ${guestBusy ? 'opacity-60 cursor-wait' : ''}`}
+                        >
+                            <Wifi className={`w-4 h-4 ${guestBusy ? 'animate-pulse' : ''}`} />
+                            <span>Guest WiFi: {guestEnabled === null ? '…' : guestEnabled ? 'On' : 'Off'}</span>
+                        </button>
+                    )}
+                    <button
+                        onClick={handleSync}
+                        disabled={syncing}
+                        className={`flex items-center justify-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all w-full md:w-auto ${syncing ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white border hover:bg-gray-50 text-gray-700 shadow-sm'
+                            }`}
+                    >
+                        <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                        <span>{syncing ? 'Syncing...' : 'Sync Now'}</span>
+                    </button>
+                </div>
             </div>
 
             {/* Top Stats */}
