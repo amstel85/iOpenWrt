@@ -198,6 +198,7 @@ function startStatusMonitor(db) {
     sweepSubnet(db);
     setInterval(() => performGlobalSync(db), 30000);
     setInterval(() => sweepSubnet(db), 300000);
+    require('./backupService').scheduleBackups(db);   // daily config backups into the data volume
 }
 
 async function rebootDevice(db, id) {

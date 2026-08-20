@@ -45,6 +45,12 @@ fastify.register(async function (protectedRoutes) {
     protectedRoutes.post('/api/network/guest', deviceController.setGuest);
     protectedRoutes.post('/api/devices/:id/reboot', deviceController.reboot);
 
+    // Config backups
+    protectedRoutes.get('/api/backups', deviceController.listBackups);
+    protectedRoutes.post('/api/backups/run', deviceController.runBackups);
+    protectedRoutes.get('/api/backups/:deviceId/:file', deviceController.downloadBackup);
+    protectedRoutes.post('/api/backups/:deviceId/:file/restore', deviceController.restoreBackup);
+
     // Fleet intelligence
     protectedRoutes.get('/api/fleet', deviceController.getFleet);
 

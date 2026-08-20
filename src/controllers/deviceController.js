@@ -145,6 +145,39 @@ const deviceController = {
         }
     },
 
+    // --- Config backups (sysupgrade -b archives, stored in the data volume; see backupService) ---
+    listBackups: async (request, reply) => {
+        try {
+            return require('../services/backupService').listBackups(db);
+        } catch (error) {
+            return reply.status(500).send({ error: "Failed to list backups", message: error.message });
+        }
+    },
+
+    runBackups: async (request, reply) => {
+        try {
+            return { success: true, results: await require('../services/backupService').runBackups(db) };
+        } catch (error) {
+            return reply.status(502).send({ error: "Backup run failed", message: error.message });
+        }
+    },
+
+    downloadBackup: async (request, reply) => {
+        const p = require('../services/backupService').resolveBackup(request.params.deviceId, request.params.file);
+        if (!p) return reply.status(404).send({ error: "Backup not found" });
+        reply.header('Content-Type', 'application/gzip');
+        reply.header('Content-Disposition', `attachment; filename="${request.params.file}"`);
+        return reply.send(require('fs').createReadStream(p));
+    },
+
+    restoreBackup: async (request, reply) => {
+        try {
+            return await require('../services/backupService').restoreBackup(db, request.params.deviceId, request.params.file);
+        } catch (error) {
+            return reply.status(400).send({ error: error.message });
+        }
+    },
+
     reboot: async (request, reply) => {
         const { id } = request.params;
         const { rebootDevice } = require('../services/deviceManager');

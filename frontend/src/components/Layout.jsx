@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Outlet, Navigate, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LayoutDashboard, Router as RouterIcon, Network, Settings, LogOut, ChevronRight, Menu } from 'lucide-react';
+import { LayoutDashboard, Router as RouterIcon, Network, Settings, LogOut, ChevronRight, Menu, Archive } from 'lucide-react';
 import api from '../api';
 
 const Layout = () => {
@@ -32,6 +32,7 @@ const Layout = () => {
         { name: 'Dashboard', path: '/', icon: LayoutDashboard },
         { name: 'Fleet', path: '/fleet', icon: Network },
         { name: 'Managed Devices', path: '/devices', icon: RouterIcon },
+        { name: 'Backups', path: '/backups', icon: Archive },
         { name: 'Settings', path: '/settings', icon: Settings },
     ];
 

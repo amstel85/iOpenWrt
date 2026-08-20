@@ -8,6 +8,7 @@ import DeviceDashboard from './pages/DeviceDashboard';
 import Dashboard from './pages/Dashboard';
 import Fleet from './pages/Fleet';
 import Settings from './pages/Settings';
+import Backups from './pages/Backups';
 
 function App() {
     return (
@@ -20,6 +21,7 @@ function App() {
                         <Route path="fleet" element={<Fleet />} />
                         <Route path="devices" element={<Devices />} />
                         <Route path="devices/:id" element={<DeviceDashboard />} />
+                        <Route path="backups" element={<Backups />} />
                         <Route path="settings" element={<Settings />} />
                     </Route>
                 </Routes>

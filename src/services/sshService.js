@@ -68,4 +68,62 @@ function executeCommand(ip, username, auth, cmd, port = 22, execTimeoutMs = 6000
     });
 }
 
-module.exports = { executeCommand };
+/**
+ * Like executeCommand but binary-safe: collects stdout as a Buffer (not a lossy UTF-8 string) and
+ * can feed a Buffer to the command's stdin. Needed for config backups — `base64` is not present on
+ * these OpenWrt builds, so we stream the raw tarball out (cat) and back in (cat > file) instead.
+ * @param {Buffer} [opts.input] - bytes to write to the remote command's stdin, then close it.
+ * @returns {Promise<Buffer>} stdout bytes.
+ */
+function executeCommandRaw(ip, username, auth, cmd, { port = 22, execTimeoutMs = 60000, input = null } = {}) {
+    return new Promise((resolve, reject) => {
+        const conn = new Client();
+        let timer = null;
+        let settled = false;
+        const done = (fn, arg) => {
+            if (settled) return;
+            settled = true;
+            if (timer) clearTimeout(timer);
+            try { conn.end(); } catch (e) { /* already gone */ }
+            fn(arg);
+        };
+
+        conn.on('ready', () => {
+            timer = setTimeout(() => {
+                try { conn.destroy(); } catch (e) { /* ignore */ }
+                done(reject, new Error(`Command timed out after ${execTimeoutMs}ms on ${ip}:${port}.`));
+            }, execTimeoutMs);
+
+            conn.exec(cmd, (err, stream) => {
+                if (err) return done(reject, err);
+                const chunks = [];
+                let errorOutput = '';
+                stream.on('close', (code) => {
+                    if (code !== 0) {
+                        return done(reject, new Error(`Command exited with code ${code}. Error: ${errorOutput}`));
+                    }
+                    done(resolve, Buffer.concat(chunks));
+                }).on('data', (data) => {
+                    chunks.push(data);
+                }).stderr.on('data', (data) => {
+                    errorOutput += data;
+                });
+                if (input) stream.end(input); // push binary to stdin, then EOF
+            });
+        }).on('error', (err) => {
+            done(reject, new Error(`SSH connection error to ${ip}:${port}: ${err.message}`));
+        });
+
+        conn.connect({
+            host: ip,
+            port: port,
+            username: username,
+            ...auth,
+            readyTimeout: 10000,
+            keepaliveInterval: 15000,
+            keepaliveCountMax: 8,
+        });
+    });
+}
+
+module.exports = { executeCommand, executeCommandRaw };
