@@ -145,6 +145,49 @@ const deviceController = {
         }
     },
 
+    // Update SSID + passphrase of the existing guest network. 400 on validation failure so the UI
+    // shows the reason verbatim.
+    setGuestConfig: async (request, reply) => {
+        const { setGuestConfig } = require('../services/deviceManager');
+        const { ssid, key } = request.body || {};
+        try {
+            return { success: true, results: await setGuestConfig(db, ssid, key) };
+        } catch (error) {
+            return reply.status(400).send({ error: error.message });
+        }
+    },
+
+    // Build the isolated guest network from scratch across the APs (for a fleet that has none).
+    createGuest: async (request, reply) => {
+        const { createGuestNetwork } = require('../services/deviceManager');
+        const { ssid, key } = request.body || {};
+        try {
+            return { success: true, results: await createGuestNetwork(db, ssid, key) };
+        } catch (error) {
+            return reply.status(400).send({ error: error.message });
+        }
+    },
+
+    // usteer (band/AP steering) on/off across the APs.
+    getUsteer: async (request, reply) => {
+        const { getUsteerStatus } = require('../services/deviceManager');
+        try {
+            return await getUsteerStatus(db);
+        } catch (error) {
+            return reply.status(502).send({ error: "Failed to read usteer status", message: error.message });
+        }
+    },
+
+    setUsteer: async (request, reply) => {
+        const { setUsteer } = require('../services/deviceManager');
+        const enabled = request.body?.enabled === true;
+        try {
+            return { success: true, enabled, results: await setUsteer(db, enabled) };
+        } catch (error) {
+            return reply.status(502).send({ error: "Failed to toggle usteer", message: error.message });
+        }
+    },
+
     // --- Config backups (sysupgrade -b archives, stored in the data volume; see backupService) ---
     listBackups: async (request, reply) => {
         try {

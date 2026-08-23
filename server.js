@@ -43,6 +43,10 @@ fastify.register(async function (protectedRoutes) {
     protectedRoutes.post('/api/network/sync', deviceController.syncAll);
     protectedRoutes.get('/api/network/guest', deviceController.getGuest);
     protectedRoutes.post('/api/network/guest', deviceController.setGuest);
+    protectedRoutes.post('/api/network/guest/config', deviceController.setGuestConfig);
+    protectedRoutes.post('/api/network/guest/create', deviceController.createGuest);
+    protectedRoutes.get('/api/network/usteer', deviceController.getUsteer);
+    protectedRoutes.post('/api/network/usteer', deviceController.setUsteer);
     protectedRoutes.post('/api/devices/:id/reboot', deviceController.reboot);
 
     // Config backups

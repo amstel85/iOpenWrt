@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Activity, Server, AlertCircle, CheckCircle2, Users, X, Wifi, Monitor, RefreshCw, LayoutTemplate, Edit2, Check, Ban } from 'lucide-react';
+import { Activity, Server, AlertCircle, CheckCircle2, Users, X, Wifi, Monitor, RefreshCw, LayoutTemplate, Edit2, Check, Ban, Radio, Plus } from 'lucide-react';
 import api from '../api';
 import TopologyMap from '../components/TopologyMap';
 
@@ -13,6 +13,13 @@ const Dashboard = () => {
     const [guestEnabled, setGuestEnabled] = useState(null);
     const [guestConfigured, setGuestConfigured] = useState(false);
     const [guestBusy, setGuestBusy] = useState(false);
+    const [guestSsid, setGuestSsid] = useState('');
+    const [usteerEnabled, setUsteerEnabled] = useState(null);
+    const [usteerInstalled, setUsteerInstalled] = useState(false);
+    const [usteerBusy, setUsteerBusy] = useState(false);
+    const [guestModal, setGuestModal] = useState(null); // { mode: 'edit' | 'create' }
+    const [guestForm, setGuestForm] = useState({ ssid: '', key: '' });
+    const [modalBusy, setModalBusy] = useState(false);
 
     const fetchDevices = async (showLoading = true) => {
         if (showLoading) setLoading(true);
@@ -70,8 +77,19 @@ const Dashboard = () => {
             const res = await api.get('/network/guest');
             setGuestConfigured(res.data.configured);
             setGuestEnabled(res.data.enabled);
+            setGuestSsid(res.data.ssid || '');
         } catch (err) {
             console.error("Failed to read guest network status", err);
+        }
+    };
+
+    const fetchUsteer = async () => {
+        try {
+            const res = await api.get('/network/usteer');
+            setUsteerInstalled(res.data.installed);
+            setUsteerEnabled(res.data.enabled);
+        } catch (err) {
+            console.error("Failed to read usteer status", err);
         }
     };
 
@@ -82,16 +100,53 @@ const Dashboard = () => {
             await api.post('/network/guest', { enabled: next });
             setGuestEnabled(next);
         } catch (err) {
-            console.error("Failed to toggle guest network", err);
             alert("Failed to toggle Guest WiFi");
         } finally {
             setGuestBusy(false);
         }
     };
 
+    const toggleUsteer = async () => {
+        const next = !usteerEnabled;
+        setUsteerBusy(true);
+        try {
+            await api.post('/network/usteer', { enabled: next });
+            setUsteerEnabled(next);
+        } catch (err) {
+            alert("Failed to toggle Smart Roaming");
+        } finally {
+            setUsteerBusy(false);
+        }
+    };
+
+    const openGuestModal = (mode) => {
+        setGuestForm({ ssid: mode === 'edit' ? guestSsid : '', key: '' });
+        setGuestModal({ mode });
+    };
+
+    const submitGuestModal = async () => {
+        const ssid = guestForm.ssid.trim();
+        if (!ssid || guestForm.key.length < 8) {
+            alert('Enter a network name and a password of at least 8 characters.');
+            return;
+        }
+        setModalBusy(true);
+        try {
+            const url = guestModal.mode === 'create' ? '/network/guest/create' : '/network/guest/config';
+            await api.post(url, { ssid, key: guestForm.key });
+            setGuestModal(null);
+            await fetchGuest();
+        } catch (err) {
+            alert('Failed: ' + (err.response?.data?.error || err.message));
+        } finally {
+            setModalBusy(false);
+        }
+    };
+
     useEffect(() => {
         fetchDevices();
         fetchGuest();
+        fetchUsteer();
         const interval = setInterval(() => fetchDevices(false), 10000); // Poll every 10 seconds
         return () => clearInterval(interval);
     }, []);
@@ -174,17 +229,48 @@ const Dashboard = () => {
                     <p className="text-gray-500 text-sm mt-1">Live overview of your managed OpenWrt network</p>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
-                    {guestConfigured && (
+                    {usteerInstalled && (
                         <button
-                            onClick={toggleGuest}
-                            disabled={guestBusy}
-                            title="Enable or disable the Guest WiFi on all access points"
-                            className={`flex items-center justify-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all w-full md:w-auto border shadow-sm ${guestEnabled
-                                ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
-                                : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'} ${guestBusy ? 'opacity-60 cursor-wait' : ''}`}
+                            onClick={toggleUsteer}
+                            disabled={usteerBusy}
+                            title="Smart Roaming (usteer): automatically move stuck devices to the nearest access point"
+                            className={`flex items-center justify-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all w-full md:w-auto border shadow-sm ${usteerEnabled
+                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                                : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'} ${usteerBusy ? 'opacity-60 cursor-wait' : ''}`}
                         >
-                            <Wifi className={`w-4 h-4 ${guestBusy ? 'animate-pulse' : ''}`} />
-                            <span>Guest WiFi: {guestEnabled === null ? '…' : guestEnabled ? 'On' : 'Off'}</span>
+                            <Radio className={`w-4 h-4 ${usteerBusy ? 'animate-pulse' : ''}`} />
+                            <span>Smart Roaming: {usteerEnabled === null ? '…' : usteerEnabled ? 'On' : 'Off'}</span>
+                        </button>
+                    )}
+                    {guestConfigured ? (
+                        <div className="flex gap-2 w-full md:w-auto">
+                            <button
+                                onClick={toggleGuest}
+                                disabled={guestBusy}
+                                title="Enable or disable the Guest WiFi on all access points"
+                                className={`flex-1 flex items-center justify-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all border shadow-sm ${guestEnabled
+                                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                                    : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'} ${guestBusy ? 'opacity-60 cursor-wait' : ''}`}
+                            >
+                                <Wifi className={`w-4 h-4 ${guestBusy ? 'animate-pulse' : ''}`} />
+                                <span>Guest WiFi: {guestEnabled === null ? '…' : guestEnabled ? 'On' : 'Off'}</span>
+                            </button>
+                            <button
+                                onClick={() => openGuestModal('edit')}
+                                title="Edit guest SSID & password"
+                                className="px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-500 hover:bg-gray-50 shadow-sm"
+                            >
+                                <Edit2 className="w-4 h-4" />
+                            </button>
+                        </div>
+                    ) : (
+                        <button
+                            onClick={() => openGuestModal('create')}
+                            title="Create an isolated guest network on all access points"
+                            className="flex items-center justify-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all w-full md:w-auto border border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 shadow-sm"
+                        >
+                            <Plus className="w-4 h-4" />
+                            <span>Set up Guest WiFi</span>
                         </button>
                     )}
                     <button
@@ -478,6 +564,59 @@ const Dashboard = () => {
                                 ))}
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Guest WiFi edit / create modal */}
+            {guestModal && (
+                <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5 animate-in slide-in-from-bottom-4 duration-200">
+                        <div className="flex justify-between items-center">
+                            <h3 className="text-xl font-black text-gray-900 tracking-tight">
+                                {guestModal.mode === 'create' ? 'Set up Guest WiFi' : 'Edit Guest WiFi'}
+                            </h3>
+                            <button onClick={() => setGuestModal(null)} className="p-2 hover:bg-gray-100 rounded-xl transition-colors">
+                                <X className="w-5 h-5 text-gray-400" />
+                            </button>
+                        </div>
+                        {guestModal.mode === 'create' && (
+                            <p className="text-xs text-gray-500 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                                Creates an isolated guest network on every access point — its own subnet, blocked from your LAN, internet only.
+                            </p>
+                        )}
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Network name (SSID)</label>
+                                <input
+                                    value={guestForm.ssid}
+                                    onChange={(e) => setGuestForm({ ...guestForm, ssid: e.target.value })}
+                                    maxLength={32}
+                                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-3 py-2 focus:border-blue-500 focus:outline-none transition-colors"
+                                    placeholder="guest"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Password (8–63 characters)</label>
+                                <input
+                                    value={guestForm.key}
+                                    onChange={(e) => setGuestForm({ ...guestForm, key: e.target.value })}
+                                    maxLength={63}
+                                    className="w-full bg-gray-50 border-2 border-gray-100 rounded-xl px-3 py-2 font-mono focus:border-blue-500 focus:outline-none transition-colors"
+                                    placeholder="••••••••"
+                                />
+                            </div>
+                        </div>
+                        <button
+                            onClick={submitGuestModal}
+                            disabled={modalBusy}
+                            className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-xl font-bold transition-all disabled:opacity-50"
+                        >
+                            {modalBusy
+                                ? <RefreshCw className="w-5 h-5 animate-spin" />
+                                : (guestModal.mode === 'create' ? <Plus className="w-5 h-5" /> : <Check className="w-5 h-5" />)}
+                            <span>{modalBusy ? 'Applying… (WiFi will blip)' : guestModal.mode === 'create' ? 'Create Guest Network' : 'Save changes'}</span>
+                        </button>
                     </div>
                 </div>
             )}
